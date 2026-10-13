@@ -5,7 +5,7 @@ panel on the existing Raspberry Pi, following Cluster #212/#213. A dedicated pub
 code repository was selected; private inventory/access stays in Shared Resources.
 
 The pilot already proved remote shell, real camera/audio capture and human-confirmed
-TV video playback. The new panel's hardware evidence is still pending. Preserve the
+TV video playback. The panel has partial user-level hardware qualification, detailed in docs/qualification.md. Preserve the
 existing login and desktop; deployment does not authorize administrative changes.
 
 Telecodex dashboard #70 has a real separate deployed provider. Its observed branch
@@ -23,3 +23,5 @@ edge mode and the maintained Star Trek / Matrix visual tokens are now selected
 by Nicolás. Preserve icon plus explicit state markers; compact mode should become
 the final default after qualification. Root observer/login deployment remains
 pending administrator recovery; unknown idle states are intentional in preview.
+
+Code is published; full privileged observation/deployment remains pending independently recovered administrator access. The visible preview intentionally shows unknown idle when process coverage is incomplete.

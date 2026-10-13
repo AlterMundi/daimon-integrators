@@ -38,8 +38,7 @@ users' FDs cannot be inspected, so idle is unknown. Other applications' storage
 intent and model perception are not inferred from open devices.
 
 Still to qualify: full restricted root observer, restart/login installation and
-rollback on receiving hardware, mediated camera coverage, compact-mode controls,
-steady idle resource usage, and final human readability/status-timing acceptance.
+rollback on receiving hardware, mediated camera coverage, and final human readability/status-timing acceptance.
 Initial ten seconds including GTK startup measured 14.75% of one CPU core plus
 1.42% for the partial observer, with panel RSS 31 MiB; this is not steady idle.
 
@@ -52,3 +51,8 @@ click ended a real combined capture; browser remained active/fullscreen.
 The browser text input also received the injected focus-test text while the
 overlay remained visible. Human reaffirmed the Star Trek direction; guide tokens
 are applied with system font fallback pending a qualified Space Grotesk asset.
+
+After replacing recurring PipeWire snapshot processes with one incremental
+monitor, verified source start and return to idle. A steady 10-second sample
+measured panel 0.53% of one CPU core / 41728 KiB RSS, partial observer 1.99% /
+10072 KiB RSS. These are dated preview measurements, not fleet capacity claims.
