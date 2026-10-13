@@ -131,6 +131,8 @@ pub enum Request {
     Stop,
     Input {
         seconds: u32,
+        #[serde(default = "mouse_mode")]
+        mode: String,
     },
     View {
         compact: bool,
@@ -326,4 +328,8 @@ mod alsa_tests {
         assert!(!alsa_card_directory("card"));
         assert!(!alsa_card_directory("pcm"));
     }
+}
+
+fn mouse_mode() -> String {
+    "mouse".into()
 }

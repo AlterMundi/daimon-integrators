@@ -144,7 +144,8 @@ unsafe extern "C" fn tick(data: W) -> i32 {
         match m.phase.as_str() {
             "preparing" => "Preparando control por gestos · inicio pendiente".into(),
             "capturing" => format!(
-                "Control por gestos · {} s · sin grabación",
+                "Control por gestos · {} · {} s · sin grabación",
+                m.mode.as_deref().unwrap_or("unknown"),
                 now().saturating_sub(m.started_at)
             ),
             "stopping" => "Deteniendo control por gestos".into(),

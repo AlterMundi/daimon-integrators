@@ -47,6 +47,7 @@ python3 -m unittest discover -s tests
 daimon-integrators panel
 daimon-integrators status
 daimon-integrators input 30
+daimon-integrators input 30 touch
 daimon-integrators power silent
 daimon-integrators power quiet
 daimon-integrators power auto
@@ -66,6 +67,12 @@ preparation. The same Stop control ends only the managed process group; observed
 camera use remains independent. It records no media. Local session summaries use
 owner-only runtime logs, cleared with the login runtime directory. No input
 session is started at boot. See WiggleControl for gesture/device qualification.
+
+`input SECONDS [mouse|touch]` selects the installed runtime's relative mouse or
+direct touchscreen session. Mouse is the backward-compatible default. The
+expanded managed status identifies the selected mode; touch creates no parallel
+mouse stream. Touch-aware clients own gesture interpretation. Native hand accuracy
+and crossing/occlusion acceptance remain WiggleControl qualification work.
 
 Initial ownership/design: [Cluster #212](https://github.com/nicoechaniz/daimon-cluster/issues/212)
 and [panel #213](https://github.com/nicoechaniz/daimon-cluster/issues/213).

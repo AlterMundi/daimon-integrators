@@ -152,3 +152,10 @@ group; subsequent status reported stopped and actual camera use false. No stored
 media or microphone capture was produced. This qualifies start/Stop and visible
 ownership, not human hand accuracy or touch semantics. Hardware bindings and
 binary rollback locations stay in the receiving private overlay.
+
+Native touch mode receiving extension: `input 5 touch` and default mouse-mode
+session each completed without error after the WiggleControl expiry correction.
+The observer saw camera use, then closure, with microphone inactive; the matching
+virtual device was absent afterward. Expanded state identifies hands-touch or
+hands-mouse; input is not recording. Two-hand reference inference ran separately
+without camera on Pi 5. Physical hand gesture/touch accuracy remains unqualified.

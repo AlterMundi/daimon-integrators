@@ -41,7 +41,10 @@ impl Engine {
     }
     fn request(&mut self, request: Request) -> Value {
         match request {
-            Request::Input { seconds } => {
+            Request::Input { seconds, mode } => {
+                if !["mouse", "touch"].contains(&mode.as_str()) {
+                    return json!({"ok":false,"error":"input mode must be mouse or touch"});
+                }
                 if !(1..=120).contains(&seconds) {
                     return json!({"ok":false,"error":"input session must last 1–120 seconds"});
                 }
@@ -56,12 +59,17 @@ impl Engine {
                 self.ui_ready.store(false, Ordering::SeqCst);
                 self.snapshot.managed = Managed {
                     activity: "input".into(),
-                    mode: Some("hands".into()),
+                    mode: Some(format!("hands-{mode}")),
                     phase: "preparing".into(),
                     started_at: now(),
                     ..Default::default()
                 };
-                self.pending = Some(("input".into(), seconds, String::new(), Instant::now()));
+                self.pending = Some((
+                    format!("input-{mode}"),
+                    seconds,
+                    String::new(),
+                    Instant::now(),
+                ));
                 json!({"ok":true,"stage":"preparing","effect_observed":false})
             }
             Request::Status => json!({"ok":true,"snapshot":self.snapshot}),
@@ -128,10 +136,14 @@ impl Engine {
                 && self.ui_ready.load(Ordering::SeqCst)
             {
                 let (mode, seconds, output, _) = self.pending.take().unwrap();
-                let mut cmd = if mode == "input" {
+                let mut cmd = if mode == "input-mouse" || mode == "input-touch" {
                     let mut cmd = Command::new("/usr/local/bin/wigglecontrol");
                     cmd.args([
-                        "run",
+                        if mode == "input-touch" {
+                            "run-touch"
+                        } else {
+                            "run"
+                        },
                         &seconds.to_string(),
                         "/etc/wigglecontrol/config.json",
                     ]);
@@ -187,7 +199,7 @@ impl Engine {
                     cmd.arg(&output);
                     cmd
                 };
-                let log = if mode == "input" {
+                let log = if mode == "input-mouse" || mode == "input-touch" {
                     runtime().join(format!("input-{}.log", now()))
                 } else {
                     Path::new(&output).with_extension("capture.log")
@@ -199,7 +211,7 @@ impl Engine {
                     .open(log)
                 {
                     Ok(log) => {
-                        let stdout = if mode == "input" {
+                        let stdout = if mode == "input-mouse" || mode == "input-touch" {
                             log.try_clone()
                                 .map(Stdio::from)
                                 .unwrap_or_else(|_| Stdio::null())
@@ -469,9 +481,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 })?
             )
         }
-        Some("input") if args.len() == 3 => {
+        Some("input") if args.len() == 3 || args.len() == 4 => {
             let response = control(Request::Input {
                 seconds: args[2].parse()?,
+                mode: args.get(3).cloned().unwrap_or_else(|| "mouse".into()),
             })?;
             println!("{response}");
             if response["ok"] != true {
@@ -502,7 +515,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err("built without UI".into());
         }
         _ => {
-            eprintln!("Usage: daimon-integrators panel|observe|status|stop|input SECONDS|power auto|quiet|silent|capture MODE SECONDS ABSOLUTE_OUTPUT");
+            eprintln!("Usage: daimon-integrators panel|observe|status|stop|input SECONDS [mouse|touch]|power auto|quiet|silent|capture MODE SECONDS ABSOLUTE_OUTPUT");
             std::process::exit(2);
         }
     }
@@ -516,10 +529,26 @@ mod engine_tests {
     fn input_duration_is_bounded_before_model_or_camera_start() {
         let mut e = Engine::new(Devices::default(), Arc::new(AtomicBool::new(false)));
         for seconds in [0, 121] {
-            assert_eq!(e.request(Request::Input { seconds })["ok"], false);
+            assert_eq!(
+                e.request(Request::Input {
+                    seconds,
+                    mode: "mouse".into()
+                })["ok"],
+                false
+            );
             assert!(e.pending.is_none());
             assert!(e.child.is_none());
         }
+        assert_eq!(
+            e.request(Request::Input {
+                seconds: 20,
+                mode: "invalid".into()
+            })["ok"],
+            false
+        );
+        assert!(e.pending.is_none());
+        let legacy: Request = serde_json::from_str(r#"{"action":"input","seconds":20}"#).unwrap();
+        assert!(matches!(legacy,Request::Input{mode,..} if mode=="mouse"));
     }
     #[test]
     fn no_capture_if_ui_cannot_acknowledge_preparing() {
