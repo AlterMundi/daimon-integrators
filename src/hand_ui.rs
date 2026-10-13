@@ -562,7 +562,7 @@ pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error
                         frame.landmarks = None;
                         *at = Instant::now();
                     }
-                    thread::sleep(Duration::from_millis(70));
+                    thread::sleep(Duration::from_millis(30));
                     continue;
                 }
                 let frame = if demo {
@@ -640,10 +640,11 @@ pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error
                         }
                     }
                 }
-                thread::sleep(Duration::from_millis(70));
+                thread::sleep(Duration::from_millis(30));
             }
         });
-        let timer = g_timeout_add(100, Some(tick), data as W);
+        // Bound presentation scheduling to 30 Hz; inference remains independently paced.
+        let timer = g_timeout_add(33, Some(tick), data as W);
         gtk_main();
         g_source_remove(timer);
         stop.store(true, Ordering::SeqCst);

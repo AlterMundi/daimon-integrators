@@ -203,3 +203,14 @@ Physical hand-overlay alignment, camera-driven click/drag comfort, producer Stop
 cleanup and countdown visibility still require human-supervised live acceptance.
 The current visual palm workspace does not establish relative-cursor coincidence.
 Receiving binaries and exact routes remain in Shared Resources' private overlay.
+
+## Native hand presentation scheduling correction
+
+The human reported a less fluid native skeleton than the preceding web preview.
+The native UI previously polled metadata every 70 ms and scheduled drawing every
+100 ms; it now polls every 30 ms and schedules drawing every 33 ms. This reduces
+presentation scheduling delay, without inventing intermediate landmarks or
+changing 150 ms input eligibility / 300 ms visual retention. Inference FPS,
+physical fluency and live-session resource consumption remain separate measured
+questions. The change affects only the optional finite hand overlay, not the
+always-running compact status panel. Rust alone does not establish fluency.
