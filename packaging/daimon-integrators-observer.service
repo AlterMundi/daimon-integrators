@@ -1,0 +1,25 @@
+[Unit]
+Description=Local microphone/camera usage observation (no media acquisition)
+After=sound.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/daimon-integrators observe
+Restart=on-failure
+RestartSec=2
+RuntimeDirectory=daimon-integrators
+RuntimeDirectoryMode=0755
+UMask=0022
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/run/daimon-integrators
+RestrictAddressFamilies=AF_UNIX
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH CAP_SYS_PTRACE
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=multi-user.target

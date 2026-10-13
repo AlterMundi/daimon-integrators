@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=CompAII device status
+Comment=Local camera and microphone usage; never starts recording
+Exec=systemctl --user start daimon-integrators-panel.service
+Terminal=false

@@ -1,0 +1,15 @@
+[Unit]
+Description=CompAII local device status panel
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/daimon-integrators panel
+Environment=GDK_BACKEND=wayland
+Environment=WAYLAND_DISPLAY=wayland-0
+Restart=on-failure
+RestartSec=3
+UMask=0077
+KillMode=control-group
+TimeoutStopSec=5
+NoNewPrivileges=yes
