@@ -21,4 +21,4 @@ if [ -f "$previous" ]; then
     mv /usr/local/bin/daimon-integrators.new /usr/local/bin/daimon-integrators
     runuser -u "$operator" -- env XDG_RUNTIME_DIR="/run/user/$operator_uid" systemctl --user restart daimon-integrators-panel.service
 fi
-echo 'Power grant/unit/selection, background quotas and retained previous panel restored.' 
+echo 'Power grant/unit/selection, background quotas and retained previous panel restored.'
