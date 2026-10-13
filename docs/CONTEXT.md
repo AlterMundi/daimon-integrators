@@ -96,3 +96,11 @@ The current palm anchor maps mirrored camera workspace to output; bones use
 camera-pixel lengths. This is not a guessed global position of the relative
 mouse. Guided calibration/cursor coincidence remains WiggleControl work. Native
 physical perception/output/Stop acceptance needs a new human ready acknowledgment.
+
+Calibrated overlay wiring: typed bounded calibration metadata and shared screen
+target now drive the native hand anchor. Native buttons enqueue selected local
+start/next/cancel/accept/rollback controls; stage guidance and ordered corner rings
+are drawn without a web renderer. First-paint acknowledgment requires matching
+actual/configured output dimensions. Visual retention is 300 ms with delayed
+coloring, separate from 150 ms input/press eligibility. Manual physical acceptance
+and prayer activation remain unfinished goal requirements.

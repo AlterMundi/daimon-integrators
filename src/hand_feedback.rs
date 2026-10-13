@@ -7,8 +7,21 @@ use std::{
 };
 
 #[derive(Clone, Debug, Deserialize)]
+pub struct CalibrationState {
+    pub stage: String,
+    pub samples: usize,
+    pub corner_target: Option<[f64; 2]>,
+    pub corners_verified: bool,
+    pub message: String,
+    pub output: [u32; 2],
+}
+#[derive(Clone, Debug, Deserialize)]
 pub struct Frame {
     pub sequence: u32,
+    #[serde(default)]
+    pub screen_target: Option<[f64; 2]>,
+    #[serde(default)]
+    pub calibration: Option<CalibrationState>,
     pub width: f64,
     pub height: f64,
     pub landmarks: Option<Vec<[f64; 2]>>,
@@ -23,6 +36,19 @@ pub struct Frame {
 impl Frame {
     pub fn parse(body: &[u8]) -> io::Result<Self> {
         let frame: Self = serde_json::from_slice(body)?;
+        if frame.screen_target.is_some_and(|p| !valid_target(p))
+            || frame.calibration.as_ref().is_some_and(|c| {
+                !matches!(
+                    c.stage.as_str(),
+                    "left" | "right" | "top" | "bottom" | "review" | "active" | "uncalibrated"
+                ) || c.samples > 24
+                    || c.message.len() > 512
+                    || c.output.iter().any(|n| !(1..=8192).contains(n))
+                    || c.corner_target.is_some_and(|p| !valid_target(p))
+            })
+        {
+            return Err(io::Error::other("invalid calibration feedback"));
+        }
         if !(1.0..=8192.0).contains(&frame.width)
             || !(1.0..=8192.0).contains(&frame.height)
             || !frame.age_ms.is_finite()
@@ -45,6 +71,11 @@ impl Frame {
         self.fresh
             && self.age_ms + now.saturating_duration_since(received).as_secs_f64() * 1000.0 < 150.0
     }
+    // Visual continuity may retain an aged hand, with delayed coloring, while
+    // input freshness and press indication keep their stricter 150 ms bound.
+    pub fn renderable(&self, received: Instant, now: Instant) -> bool {
+        self.age_ms + now.saturating_duration_since(received).as_secs_f64() * 1000.0 < 300.0
+    }
     // Mirrored camera coordinates, independent of the relative system pointer.
     pub fn screen_point(&self, point: [f64; 2], width: f64, height: f64) -> [f64; 2] {
         [
@@ -52,6 +83,9 @@ impl Frame {
             point[1] / self.height * height,
         ]
     }
+}
+fn valid_target(p: [f64; 2]) -> bool {
+    p.iter().all(|n| n.is_finite() && (0.0..=1.0).contains(n))
 }
 pub fn request(port: u16, method: &str, path: &str) -> io::Result<Vec<u8>> {
     let address = SocketAddr::from(([127, 0, 0, 1], port));
@@ -120,5 +154,18 @@ mod tests {
             decode_response(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}").unwrap(),
             b"{}"
         );
+    }
+    #[test]
+    fn visual_retention_does_not_extend_input_or_accept_invalid_screen_target() {
+        let mut f = frame();
+        let at = Instant::now();
+        assert!(!f.visible(at, at + Duration::from_millis(150)));
+        assert!(f.renderable(at, at + Duration::from_millis(150)));
+        assert!(!f.renderable(at, at + Duration::from_millis(250)));
+        f.fresh = false;
+        assert!(!f.visible(at, at));
+        assert!(f.renderable(at, at));
+        let bytes=br#"{"sequence":1,"width":640,"height":480,"landmarks":null,"fresh":true,"age_ms":0,"pinch_state":"open","blocked_reason":"","presses":0,"test_phase":"testing","remaining_ms":1000,"screen_target":[1.1,0.5]}"#;
+        assert!(Frame::parse(bytes).is_err());
     }
 }

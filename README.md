@@ -106,3 +106,16 @@ workspace calibration and cursor-coincident feedback remain pending in WiggleCon
 `hand-overlay-demo SECONDS` draws a labeled fictional hand, without opening sensors
 or producing input, for transparency/fullscreen qualification. The web qualification
 page is now an ordinary application event observer, with no hand renderer.
+
+Calibrated producers publish a shared absolute `screen_target` and calibration
+state. The hand overlay anchors to that emitted target during active use/review;
+neutral sampling shows the camera workspace. Native CALIBRATE/NEXT/CANCEL/ACCEPT/
+ROLLBACK controls target the selected finite producer. Stage/sample/corner
+instructions show progress, and controls are disabled outside applicable stages
+or after expiry/disconnection. The measured window is not acknowledged for a
+configured output size differing from the actual layer allocation.
+
+Visual hand retention is bounded at 300 ms; aged feedback is dimmed/amber. It does
+not extend the strict 150 ms input freshness or green press indication. The
+independent status panel still owns device observation; source/UI fixture checks
+do not prove human calibration or camera Stop cleanup.
