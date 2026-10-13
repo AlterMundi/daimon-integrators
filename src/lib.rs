@@ -1,3 +1,4 @@
+pub mod system;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -57,6 +58,8 @@ pub struct Snapshot {
     pub pipewire_camera: bool,
     pub managed: Managed,
     pub remote_activity: Option<Value>,
+    #[serde(default)]
+    pub system: system::SystemStatus,
 }
 
 pub fn observation_fresh(at: u64, time: u64) -> bool {

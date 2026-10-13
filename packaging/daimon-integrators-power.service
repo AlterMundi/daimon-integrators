@@ -1,0 +1,16 @@
+[Unit]
+Description=Restore explicitly selected local integrator power profile
+After=systemd-modules-load.service
+ConditionPathExists=/etc/daimon-integrators/power-mode.json
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/daimon-integrators power-restore
+RemainAfterExit=yes
+NoNewPrivileges=yes
+ProtectHome=yes
+PrivateTmp=yes
+RestrictAddressFamilies=AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

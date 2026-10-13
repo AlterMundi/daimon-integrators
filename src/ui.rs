@@ -91,6 +91,10 @@ struct Ui {
     small_rec: W,
     small_remote: W,
     small_stop: W,
+    system: W,
+    small_cpu: W,
+    small_temperature: W,
+    small_power: W,
 }
 unsafe fn label(s: &str, box_: W) -> W {
     let w = gtk_label_new(c(s).as_ptr());
@@ -167,7 +171,39 @@ unsafe extern "C" fn tick(data: W) -> i32 {
             )
         })
         .unwrap_or_else(|| "CompAII · sin feed remoto reciente".into());
-    let text = format!("{mic}|{cam}|{managed}|{remote}");
+    let local_fresh = observation_fresh(s.system.at, now());
+    let cpu = if local_fresh {
+        s.system.cpu_percent.map(|v| format!("{v:.0}%"))
+    } else {
+        None
+    }
+    .unwrap_or_else(|| "?".into());
+    let temperature = if local_fresh {
+        s.system.temperature_c.map(|v| format!("{v:.0}°"))
+    } else {
+        None
+    }
+    .unwrap_or_else(|| "?".into());
+    let power = if local_fresh {
+        s.system.power_mode.as_str()
+    } else {
+        "unknown"
+    };
+    let (short, mode) = match power {
+        "silent" => ("Zz", "Silencioso · ventilador apagado"),
+        "quiet" => ("ECO", "Silencioso · ventilador automático reducido"),
+        "auto" => ("AUTO", "Automático"),
+        "fan_off" => ("OFF", "Ventilador apagado · CPU sin perfil silencioso"),
+        "custom" => ("CUSTOM", "Configuración personalizada"),
+        _ => ("?", "Modo desconocido"),
+    };
+    let rpm = s
+        .system
+        .fan_rpm
+        .map(|v| format!("{v} rpm"))
+        .unwrap_or_else(|| "rpm desconocidas".into());
+    let summary = format!("CPU {cpu} · {temperature}C · {mode} · {rpm}");
+    let text = format!("{mic}|{cam}|{managed}|{remote}|{summary}");
     if text != u.last {
         set(
             u.mic,
@@ -244,6 +280,44 @@ unsafe extern "C" fn tick(data: W) -> i32 {
             u.small_stop,
             i32::from(["preparing", "capturing", "stopping"].contains(&m.phase.as_str())),
         );
+        set(
+            u.system,
+            &summary,
+            power == "silent",
+            !local_fresh || power == "unknown",
+        );
+        set(u.small_cpu, &cpu, false, cpu == "?");
+        set(
+            u.small_temperature,
+            &temperature,
+            s.system.temperature_c.is_some_and(|v| v >= 80.0),
+            temperature == "?",
+        );
+        set(
+            u.small_power,
+            short,
+            power == "silent" || power == "quiet",
+            power == "unknown",
+        );
+        gtk_widget_set_tooltip_text(
+            u.small_cpu,
+            c("Uso total de CPU · 0–100% entre todos los núcleos").as_ptr(),
+        );
+        gtk_widget_set_tooltip_text(
+            u.small_temperature,
+            c(&format!("Temperatura local · {rpm}")).as_ptr(),
+        );
+        gtk_widget_set_tooltip_text(
+            u.small_power,
+            c(&format!(
+                "{mode} · límite CPU {} MHz · {rpm}",
+                s.system
+                    .cpu_max_mhz
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(|| "?".into())
+            ))
+            .as_ptr(),
+        );
         u.last = text;
     }
     if m.phase == "preparing" {
@@ -260,8 +334,8 @@ unsafe fn apply_view(u: &mut Ui, compact: bool) {
     u.engine.lock().unwrap().snapshot.ui_compact = Some(compact);
     gtk_widget_set_visible(u.detail, i32::from(!compact));
     gtk_widget_set_visible(u.compact_box, i32::from(compact));
-    gtk_window_set_default_size(u.window, if compact { 156 } else { 1080 }, 0);
-    gtk_window_resize(u.window, if compact { 156 } else { 1080 }, 1);
+    gtk_window_set_default_size(u.window, if compact { 112 } else { 1080 }, 0);
+    gtk_window_resize(u.window, if compact { 112 } else { 1080 }, 1);
     gtk_layer_set_margin(u.window, 1, if compact { 0 } else { 24 });
     let path =
         PathBuf::from(env::var("HOME").unwrap_or_default()).join(".config/daimon-integrators");
@@ -279,7 +353,7 @@ unsafe fn badge(box_: W, icon: &str, name: &str) -> W {
     gtk_box_pack_start(box_, group, 0, 0, 0);
     if !icon.is_empty() {
         let image = gtk_image_new_from_icon_name(c(icon).as_ptr(), 6);
-        gtk_image_set_pixel_size(image, 40);
+        gtk_image_set_pixel_size(image, 24);
         gtk_box_pack_start(group, image, 0, 0, 0);
     }
     let title = label(name, group);
@@ -324,8 +398,12 @@ pub fn run(
         gtk_layer_set_exclusive_zone(window, 0);
         let outer = gtk_box_new(1, 0);
         gtk_container_add(window, outer);
-        let compact_box = gtk_box_new(1, 12);
-        gtk_container_set_border_width(compact_box, 12);
+        let compact_box = gtk_box_new(1, 6);
+        gtk_style_context_add_class(
+            gtk_widget_get_style_context(compact_box),
+            c("compact").as_ptr(),
+        );
+        gtk_container_set_border_width(compact_box, 6);
         gtk_box_pack_start(outer, compact_box, 0, 0, 0);
         let expand = gtk_button_new_with_label(c("◀").as_ptr());
         gtk_box_pack_start(compact_box, expand, 0, 0, 0);
@@ -334,6 +412,9 @@ pub fn run(
         let small_cam = badge(compact_box, "camera-video-symbolic", "CAM");
         let small_rec = badge(compact_box, "media-record-symbolic", "REC");
         let small_remote = badge(compact_box, "", "AII");
+        let small_cpu = badge(compact_box, "", "CPU");
+        let small_temperature = badge(compact_box, "", "TEMP");
+        let small_power = badge(compact_box, "", "MODE");
         let small_stop = gtk_button_new_with_label(c("■").as_ptr());
         gtk_box_pack_start(compact_box, small_stop, 0, 0, 0);
         gtk_widget_set_tooltip_text(small_stop, c("Detener sólo mi captura gestionada").as_ptr());
@@ -348,13 +429,14 @@ pub fn run(
         let cam = label("CÁMARA   Desconocido", box_);
         let managed = label("Sin grabación gestionada", box_);
         let remote = label("CompAII · sin feed remoto reciente", box_);
+        let system = label("CPU ? · temperatura ? · modo desconocido", box_);
         let button = gtk_button_new_with_label(c("Detener mi captura").as_ptr());
         gtk_box_pack_start(box_, button, 0, 0, 0);
         gtk_widget_set_sensitive(button, 0);
         let footer = label("Uso observado ≠ grabación · estado local cada 1 s", box_);
         gtk_style_context_add_class(gtk_widget_get_style_context(footer), c("footer").as_ptr());
         let provider = gtk_css_provider_new();
-        let css=c("window { background: #090e17; color: #f5f0e6; border-left: 14px solid #dcb3c3; border-top: 8px solid #f4c283; border-radius: 28px 0 0 28px; } label { font-family: Space Grotesk, Sans; font-size: 32px; color: #f5f0e6; } .title { font-size: 36px; font-weight: bold; color: #090e17; background: #f4c283; border-radius: 32px 0 0 32px; padding: 12px 22px; } .footer { font-size: 26px; color: #abb7c9; } .badge-title { font-size: 22px; color: #87d7ee; } .badge-value { font-size: 38px; color: #a8dac6; } .active { color: #f4c283; font-weight: bold; } .unknown { color: #dcb3c3; } button { font-size: 30px; padding: 10px; background: #f4c283; color: #090e17; border: 0; border-radius: 32px 0 0 32px; } button:disabled { background: #111925; color: #abb7c9; } button:hover { background: #87d7ee; } image { color: #f5f0e6; }");
+        let css=c("window { background: #090e17; color: #f5f0e6; border-left: 14px solid #dcb3c3; border-top: 8px solid #f4c283; border-radius: 28px 0 0 28px; } label { font-family: Space Grotesk, Sans; font-size: 32px; color: #f5f0e6; } .title { font-size: 36px; font-weight: bold; color: #090e17; background: #f4c283; border-radius: 32px 0 0 32px; padding: 12px 22px; } .footer { font-size: 26px; color: #abb7c9; } .badge-title { font-size: 22px; color: #87d7ee; } .badge-value { font-size: 38px; color: #a8dac6; } .active { color: #f4c283; font-weight: bold; } .unknown { color: #dcb3c3; } button { font-size: 30px; padding: 10px; background: #f4c283; color: #090e17; border: 0; border-radius: 32px 0 0 32px; } button:disabled { background: #111925; color: #abb7c9; } button:hover { background: #87d7ee; } image { color: #f5f0e6; } .compact label { font-size: 20px; } .compact .badge-title { font-size: 12px; } .compact .badge-value { font-size: 22px; } .compact button { font-size: 18px; padding: 5px; }");
         gtk_css_provider_load_from_data(provider, css.as_ptr(), -1, ptr::null_mut());
         gtk_style_context_add_provider_for_screen(gdk_screen_get_default(), provider, 800);
         let settings_path = PathBuf::from(env::var("HOME").unwrap_or_default())
@@ -381,6 +463,10 @@ pub fn run(
             small_rec,
             small_remote,
             small_stop,
+            system,
+            small_cpu,
+            small_temperature,
+            small_power,
         })) as W;
         let callback: unsafe extern "C" fn() =
             std::mem::transmute(stop as unsafe extern "C" fn(W, W));

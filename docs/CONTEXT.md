@@ -44,3 +44,22 @@ native perception engines, uinput/Wayland behavior and proposed qualification.
 It informs #3; no device injection, new camera trial or startup inference was
 performed by the research. Reuse ProyectoRPi/Barehands and selected HarMoCAP
 methods, preserve attribution, and measure rather than promise efficiency.
+
+## System metrics and selectable quiet modes — 2026-10-13
+
+Nicolas requested actual CPU percentage, SoC temperature and the selected silent
+mode in the existing overlay. The panel now samples those local resources offline,
+shows compact CPU/TEMP/MODE badges and an expanded detail line, and detects mode
+from live fan enable, CPU cap and thermal thresholds. Compact presentation is
+scaled down for 1080p. Existing observation/capture and layer-shell behavior remain.
+
+Power CLI selects auto (standard thermal curve/2.4 GHz), quiet (later thermal
+steps/2 GHz), or silent (forced fan off/1.5 GHz). Exact fixed profile helpers have
+a narrow sudo grant; the UI stays unprivileged. A selected mode is saved and restored
+by a finite boot oneshot. No model/camera startup is implied. Receiving-selected
+background units can have a mode-specific CPU budget; auto restores original quota.
+See docs/power-profiles.md and qualification evidence, not the old manual script.
+
+WiggleControl now has its own owning repository and issue; its native model probe
+found one concrete palm Resize shape failure in the pinned tract candidate.
+Continue its end-to-end goal there after this human-directed local dashboard update.

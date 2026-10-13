@@ -102,3 +102,41 @@ before and after; credential contents were never emitted.
 Remaining human/device acceptance: physical USB disconnect/reconnect and final
 compact readability/status timing on the TV. Earlier steady idle measurements
 belong to Pi 4 and must not be presented as Pi 5 measurements.
+
+## System metrics and power profiles — 2026-10-13
+
+Source tests verify aggregate CPU counters without duplicate guest accounting,
+missing/regressed samples and mode classification from live fan/frequency/thermal
+configuration. Existing capture isolation tests still pass. Full-feature Clippy
+passed; the no-UI test configuration retains its existing unused-UI warnings.
+
+Receiving Rust 1.85.1 built the updated GTK/layer-shell release with one build job
+and low priority. Previous working installed binary retained before replacement.
+Existing observer and desktop were not restarted; only the user panel was.
+Independent status receipt shows actual CPU percentage, SoC temperature, 0 RPM,
+1.5 GHz cap and silent mode, with camera and microphone inactive. A right-edge
+screenshot confirms compact CPU/TEMP/MODE badges visible at 1080p and the existing
+compact view preserved; no screenshot/media/private binding is committed.
+
+The exact three-command sudo grant and saved-mode boot unit are installed; a
+normal-user `power silent` invocation applied the state. Reboot restoration is
+configured but not yet observed. Real quiet/auto transition and final selected
+workload-budget acceptance remain separately recorded below when executed.
+
+The fan-off experiment reached about 90 C under full four-core conversion and
+firmware thermal limiting was observed. A selected existing encoder was limited
+to one core; measured overall CPU then fell from about 98% to 28% and temperature
+fell to around 85 C during the initial cooldown. Compilation adds temporary load.
+This does not prove a stable fanless equilibrium or future inference performance.
+
+Final normal-user transitions passed: quiet reported its actual mode and selected
+encoder quota 2s per second; auto restored its observed 2.4 GHz maximum and original
+unlimited quota; silent reported its mode, 1.5 GHz cap and quota 1s per second.
+The first auto test exposed that systemd displays `infinity` but rejects that
+literal assignment; reset now uses the supported empty CPUQuota assignment and
+real retest restored the original unlimited value. Final independent panel status
+reported silent, 0 RPM, temperature about 84 C and fresh CPU percentage; camera/
+microphone remained inactive. Ten Rust tests, Python bridge checks and isolated
+installer snapshot/retry/rollback fixtures passed. Mode-specific receiving
+workloads remain private. Actual boot adoption and human visual/thermal preference
+acceptance remain unverified; no reboot or sensor capture was performed.

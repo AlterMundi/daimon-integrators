@@ -301,6 +301,13 @@ fn pipewire_monitor() -> Arc<Mutex<PipeState>> {
     result
 }
 fn serve(engine: Arc<Mutex<Engine>>) -> std::io::Result<()> {
+    if let Some(mode) =
+        read_json::<system::PowerMode>(Path::new("/etc/daimon-integrators/power-mode.json"))
+    {
+        if let Err(error) = system::apply_workloads(mode) {
+            eprintln!("Background power budget: {error}");
+        }
+    }
     let dir = runtime();
     fs::create_dir_all(&dir)?;
     fs::set_permissions(&dir, fs::Permissions::from_mode(0o700))?;
@@ -317,6 +324,7 @@ fn serve(engine: Arc<Mutex<Engine>>) -> std::io::Result<()> {
     listener.set_nonblocking(true)?;
     let pipewire = pipewire_monitor();
     thread::spawn(move || {
+        let mut sampler = system::Sampler::default();
         let mut last_written = Vec::new();
         let mut observed = Instant::now() - Duration::from_secs(5);
         loop {
@@ -342,6 +350,7 @@ fn serve(engine: Arc<Mutex<Engine>>) -> std::io::Result<()> {
                         .is_some_and(|at| now().saturating_sub(at) <= 15 && at <= now() + 1)
                 });
                 let mut e = engine.lock().unwrap();
+                e.snapshot.system = sampler.sample();
                 e.snapshot.observation = obs;
                 e.snapshot.pipewire_ok = pipe.ok;
                 e.snapshot.pipewire_microphone = pipe.microphone;
@@ -365,6 +374,34 @@ fn serve(engine: Arc<Mutex<Engine>>) -> std::io::Result<()> {
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
     match args.get(1).map(String::as_str) {
+        Some("power-apply") if args.len() == 3 => {
+            let mode = system::PowerMode::parse(&args[2])?;
+            system::apply_power(mode, true)?;
+            let measured = system::Sampler::default().sample();
+            println!("{}", serde_json::to_string(&measured)?);
+        }
+        Some("power-restore") => {
+            if let Some(mode) =
+                read_json::<system::PowerMode>(Path::new("/etc/daimon-integrators/power-mode.json"))
+            {
+                system::apply_power(mode, false)?;
+            }
+        }
+        Some("power") if args.len() == 3 => {
+            let mode = system::PowerMode::parse(&args[2])?;
+            let status = Command::new("sudo")
+                .args([
+                    "-n",
+                    "/usr/local/bin/daimon-integrators",
+                    "power-apply",
+                    &args[2],
+                ])
+                .status()?;
+            if !status.success() {
+                return Err("power mode change failed; consult observed status".into());
+            }
+            system::apply_workloads(mode)?;
+        }
         Some("observe") => {
             let path = observation_path();
             fs::create_dir_all(path.parent().ok_or("observation path requires a parent")?)?;
@@ -410,7 +447,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err("built without UI".into());
         }
         _ => {
-            eprintln!("Usage: daimon-integrators panel|observe|status|stop|capture MODE SECONDS ABSOLUTE_OUTPUT");
+            eprintln!("Usage: daimon-integrators panel|observe|status|stop|power auto|quiet|silent|capture MODE SECONDS ABSOLUTE_OUTPUT");
             std::process::exit(2);
         }
     }

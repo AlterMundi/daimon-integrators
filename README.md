@@ -16,6 +16,7 @@ pointers; Telecodex owns native session activity and Stop.
 - Native Rust + system GTK3/layer-shell overlay above fullscreen/kiosk windows; no web runtime.
 - Star Trek / Matrix visual tokens, expanded detail and a compact edge rail with
   device icons, state markers and scoped Stop. View preference is retained locally.
+- Local CPU percentage, SoC temperature and observed auto/quiet/silent power mode.
 - Microphone/camera usage indicators with explicit stale/incomplete/unknown states.
 - Managed finite recording, visible preparation before acquisition, elapsed time and
   a **Stop my capture** control; arbitrary external applications are never killed.
@@ -24,7 +25,7 @@ pointers; Telecodex owns native session activity and Stop.
   on the VPS. No model, Matrix inbox consumer or continuous recording is started.
 
 See [observation limits](docs/observation.md), [installation and rollback](docs/install.md),
-[qualification](docs/qualification.md), and [current work](docs/CONTEXT.md).
+[qualification](docs/qualification.md), [power profiles](docs/power-profiles.md), and [current work](docs/CONTEXT.md).
 
 ## Build
 
@@ -43,6 +44,9 @@ python3 -m unittest discover -s tests
 ```text
 daimon-integrators panel
 daimon-integrators status
+daimon-integrators power silent
+daimon-integrators power quiet
+daimon-integrators power auto
 daimon-integrators capture both 8 /absolute/local/clip.mp4
 daimon-integrators capture audio 8 /absolute/local/audio.m4a
 daimon-integrators capture video 8 /absolute/local/video.mp4
