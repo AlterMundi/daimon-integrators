@@ -17,6 +17,9 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+mod hand_feedback;
+#[cfg(feature = "ui")]
+mod hand_ui;
 #[cfg(feature = "ui")]
 mod ui;
 
@@ -515,6 +518,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 std::process::exit(1);
             }
         }
+        #[cfg(feature = "ui")]
+        Some("hand-overlay") if args.len() == 4 => {
+            hand_ui::run(args[2].parse()?, args[3].parse()?, false)?;
+        }
+        #[cfg(feature = "ui")]
+        Some("hand-overlay-demo") if args.len() == 3 => {
+            hand_ui::run(0, args[2].parse()?, true)?;
+        }
         Some("panel") => {
             #[cfg(feature = "ui")]
             {
@@ -527,7 +538,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err("built without UI".into());
         }
         _ => {
-            eprintln!("Usage: daimon-integrators panel|observe|status|stop|input SECONDS [mouse|touch]|power auto|quiet|silent|capture MODE SECONDS ABSOLUTE_OUTPUT");
+            eprintln!("Usage: daimon-integrators hand-overlay PORT SECONDS|hand-overlay-demo SECONDS|panel|observe|status|stop|input SECONDS [mouse|touch]|power auto|quiet|silent|capture MODE SECONDS ABSOLUTE_OUTPUT");
             std::process::exit(2);
         }
     }

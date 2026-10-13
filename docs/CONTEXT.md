@@ -82,3 +82,17 @@ session start. The current log is protected across clock regression; capture
 media/logs, archives, directories, symlinks and other owners' files are excluded.
 Retention errors fail before acquisition. The filesystem qualification test
 checks preservation, trimming and repeated operation; no sensor is needed.
+
+## Native WiggleControl hand overlay
+
+The human requested moving the temporary browser hand renderer into the actual
+Wayland desktop overlay. Manual `hand-overlay PORT SECONDS` consumes only the
+existing finite WiggleControl `/state` projection. GTK3/layer-shell/Cairo render
+transparent click-through hand bones above ordinary applications; a separate
+small native Stop button targets the selected direct producer. The existing
+production status panel and observer stay independent. No model/sensor at startup.
+
+The current palm anchor maps mirrored camera workspace to output; bones use
+camera-pixel lengths. This is not a guessed global position of the relative
+mouse. Guided calibration/cursor coincidence remains WiggleControl work. Native
+physical perception/output/Stop acceptance needs a new human ready acknowledgment.

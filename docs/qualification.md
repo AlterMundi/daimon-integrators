@@ -177,3 +177,29 @@ then reported camera/microphone inactive, silent power mode and seven valid
 numbered logs within the limit. This demonstrates wired session operation, not
 that twenty-plus live logs were present. No external files or selected recordings
 were pruned. Evidence/custody stays in the receiving private overlay.
+
+## Native desktop hand surface — 2026-10-13
+
+The receiving Rust 1.85.1 release renders a labeled fictional hand over the
+existing fullscreen Chromium Wayland page. A compositor screenshot and
+layer-shell configure trace confirm 1920x1080 after selecting exclusive zone -1,
+which ignores other surfaces' reserved zones without reserving its own area.
+Keyboard interactivity is zero and the skeleton surface repeatedly commits an
+empty input region. The independent compact status panel remains visible.
+
+Real uinput mouse events passed through the overlay into Chromium: two trusted
+clicks, one completed drag, wheel delivery and producer-watchdog release.
+Read-only browser observation reported focus retained, 1920x1080 and no web hand
+canvas. The initial automated sample arrived before a pointer event was observed;
+the bounded harness was corrected to await the first event before targeting.
+No camera/microphone or inference was opened.
+
+A process sample during the fictional rendering showed about 3.6% CPU and 36 MiB
+RSS. This is an illustrative short rendering sample, not a perception benchmark
+or a steady-state CPU guarantee. Source formatting, fourteen Rust tests (including
+malformed/bounded response and stale feedback cases), no-UI tests and Clippy passed.
+
+Physical hand-overlay alignment, camera-driven click/drag comfort, producer Stop
+cleanup and countdown visibility still require human-supervised live acceptance.
+The current visual palm workspace does not establish relative-cursor coincidence.
+Receiving binaries and exact routes remain in Shared Resources' private overlay.

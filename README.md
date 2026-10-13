@@ -82,3 +82,27 @@ and crossing/occlusion acceptance remain WiggleControl qualification work.
 
 Initial ownership/design: [Cluster #212](https://github.com/nicoechaniz/daimon-cluster/issues/212)
 and [panel #213](https://github.com/nicoechaniz/daimon-cluster/issues/213).
+
+## Native hand feedback
+
+`daimon-integrators hand-overlay PORT SECONDS` renders WiggleControl's bounded
+loopback `/state` metadata on a transparent, full-output GTK3/layer-shell surface.
+It opens no camera, input device or inference runtime. Start the separately
+authorized finite `wigglecontrol run-feedback` producer; after the first metadata
+view is painted, the overlay sends `/ready` to start its measured input window.
+`SECONDS` bounds this UI to 1–120 seconds. Nothing is installed at startup.
+
+The skeleton surface has an empty input region and no keyboard focus. A separate
+small layer-shell STOP INPUT button is the only interactive area. It sends `/stop`
+to this selected local producer; the independent status panel remains the source
+for actual camera use. This direct session is not owned by the panel's managed
+capture Stop. Timer expiry/connection failure clears stale hand feedback.
+
+Bones retain camera-pixel dimensions around a palm anchor mapped from the mirrored
+camera workspace to the output. **This is hand position, not the relative mouse's
+global cursor position.** No global Wayland cursor coordinate is guessed. Guided
+workspace calibration and cursor-coincident feedback remain pending in WiggleControl.
+
+`hand-overlay-demo SECONDS` draws a labeled fictional hand, without opening sensors
+or producing input, for transparency/fullscreen qualification. The web qualification
+page is now an ordinary application event observer, with no hand renderer.
