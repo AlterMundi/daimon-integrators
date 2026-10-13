@@ -68,6 +68,12 @@ camera use remains independent. It records no media. Local session summaries use
 owner-only runtime logs, cleared with the login runtime directory. No input
 session is started at boot. See WiggleControl for gesture/device qualification.
 
+At session start, only the newest 20 owned numbered input logs are retained,
+including the current log even if the clock regressed. Recordings, capture logs,
+archives, directories, symlinks and other owners' files are untouched. A retention
+failure is reported before starting the session, rather than growing without a
+limit. Copy selected diagnostic evidence elsewhere before it ages out.
+
 `input SECONDS [mouse|touch]` selects the installed runtime's relative mouse or
 direct touchscreen session. Mouse is the backward-compatible default. The
 expanded managed status identifies the selected mode; touch creates no parallel

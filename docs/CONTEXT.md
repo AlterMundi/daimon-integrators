@@ -76,3 +76,9 @@ ownership and must be installed separately; no session starts at login.
 Receiving qualification observed preparation, input activity and camera-open with
 microphone inactive; Stop reaped the session and the camera closed. This proves
 session control, not hand recognition accuracy. See docs/qualification.md.
+
+Input summary retention is now bounded to 20 owner-generated numbered logs at
+session start. The current log is protected across clock regression; capture
+media/logs, archives, directories, symlinks and other owners' files are excluded.
+Retention errors fail before acquisition. The filesystem qualification test
+checks preservation, trimming and repeated operation; no sensor is needed.

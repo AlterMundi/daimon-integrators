@@ -204,6 +204,7 @@ impl Engine {
                 } else {
                     Path::new(&output).with_extension("capture.log")
                 };
+                let log_path = log.clone();
                 match fs::OpenOptions::new()
                     .write(true)
                     .create_new(true)
@@ -211,6 +212,17 @@ impl Engine {
                     .open(log)
                 {
                     Ok(log) => {
+                        if mode == "input-mouse" || mode == "input-touch" {
+                            if let Err(error) =
+                                logs::retain(&runtime(), &log_path, logs::INPUT_LOGS)
+                            {
+                                self.snapshot.managed.phase = "failed".into();
+                                self.snapshot.managed.error = Some(format!(
+                                    "input log retention failed: {error}; session not started"
+                                ));
+                                return;
+                            }
+                        }
                         let stdout = if mode == "input-mouse" || mode == "input-touch" {
                             log.try_clone()
                                 .map(Stdio::from)

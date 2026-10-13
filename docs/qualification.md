@@ -159,3 +159,21 @@ The observer saw camera use, then closure, with microphone inactive; the matchin
 virtual device was absent afterward. Expanded state identifies hands-touch or
 hands-mouse; input is not recording. Two-hand reference inference ran separately
 without camera on Pi 5. Physical hand gesture/touch accuracy remains unqualified.
+
+
+## Bounded managed input summaries — 2026-10-13
+
+The panel retains at most twenty owner-generated numbered input logs at session
+start, protecting the current log even after clock regression. A filesystem test
+creates twenty-five numbered records and unrelated capture/media/archive paths,
+directories and a symlink; only the expected old numbered records are removed.
+Repeating the operation is stable; invalid zero retention is rejected. It passed
+on the development host and receiving ARM64 Rust 1.85.1. Full-feature source tests
+and Clippy passed; existing no-UI dead-code warnings remain unchanged.
+
+The receiving release was installed with the prior full-input panel retained;
+only its user service restarted. A three-second real input session completed,
+then reported camera/microphone inactive, silent power mode and seven valid
+numbered logs within the limit. This demonstrates wired session operation, not
+that twenty-plus live logs were present. No external files or selected recordings
+were pruned. Evidence/custody stays in the receiving private overlay.
