@@ -70,3 +70,13 @@ contents, owners and modes preserved; fresh installation retried twice then
 removed only its installed files. Administrative SSH sentinel contents remained
 unchanged throughout. Services were mocked inside the namespace: this proves
 file-effect qualification, not real systemd or receiving privileged deployment.
+
+## Full receiving observer — 2026-10-13
+
+Administrator authentication was recovered and verified independently. The
+restricted system observer and final user panel were installed. The first full
+check still reported incomplete ALSA coverage: the code treated the regular
+summary file `cards` as a `cardN` directory, and the actual syscall returned
+ENOTDIR. Corrected directory selection and added a regression test. Subsequent
+live samples report complete=true with healthy idle and PipeWire observation.
+Receiving installation/rollback and final acceptance are being qualified.

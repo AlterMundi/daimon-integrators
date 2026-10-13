@@ -149,6 +149,11 @@ pub fn validate_capture(mode: &str, seconds: u32, output: &str) -> Result<(), &'
     Ok(())
 }
 
+pub fn alsa_card_directory(name: &str) -> bool {
+    name.strip_prefix("card")
+        .is_some_and(|suffix| !suffix.is_empty() && suffix.chars().all(|c| c.is_ascii_digit()))
+}
+
 pub fn observe(camera: &str) -> Observation {
     let mut o = Observation {
         at: now(),
@@ -194,7 +199,7 @@ pub fn observe(camera: &str) -> Observation {
         for card in cards.flatten() {
             let name = card.file_name();
             let name = name.to_string_lossy();
-            if !name.starts_with("card") {
+            if !alsa_card_directory(&name) {
                 continue;
             }
             let Ok(pcms) = fs::read_dir(card.path()) else {
@@ -299,5 +304,18 @@ mod graph_tests {
             pipewire_activity(&serde_json::json!([node])),
             (false, false)
         );
+    }
+}
+
+#[cfg(test)]
+mod alsa_tests {
+    use super::*;
+    #[test]
+    fn ignore_alsa_summary_files_when_enumerating_card_directories() {
+        assert!(alsa_card_directory("card0"));
+        assert!(alsa_card_directory("card12"));
+        assert!(!alsa_card_directory("cards"));
+        assert!(!alsa_card_directory("card"));
+        assert!(!alsa_card_directory("pcm"));
     }
 }
