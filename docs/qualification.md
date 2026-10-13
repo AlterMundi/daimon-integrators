@@ -80,3 +80,25 @@ summary file `cards` as a `cardN` directory, and the actual syscall returned
 ENOTDIR. Corrected directory selection and added a regression test. Subsequent
 live samples report complete=true with healthy idle and PipeWire observation.
 Receiving installation/rollback and final acceptance are being qualified.
+
+## Pi 5 receiving qualification — 2026-10-13
+
+The same SD booted on Raspberry Pi 5 Model B Rev 1.0, verified from the
+device tree. Final system observer and user panel started automatically; compact
+preference survived, complete observation was healthy, and no capture started.
+
+A bounded external GStreamer PipeWire camera stream (60 buffers to fakesink,
+no stored media) with target-object set to the source object serial and explicit
+video/x-raw caps completed successfully. Both camera FD observation and PipeWire
+flow became active, while managed recording stayed absent. Earlier attempts
+without explicit video caps returned target-not-found; their cause is not inferred.
+
+Actual receiving rollback removed the installed binary and system unit. Fresh
+SSH and independent sudo authentication remained functional. Reinstallation
+restored complete observation and the acknowledged compact UI. Content digests
+of SSH configuration, authorized access files and sudo configuration matched
+before and after; credential contents were never emitted.
+
+Remaining human/device acceptance: physical USB disconnect/reconnect and final
+compact readability/status timing on the TV. Earlier steady idle measurements
+belong to Pi 4 and must not be presented as Pi 5 measurements.
