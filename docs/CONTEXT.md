@@ -63,3 +63,16 @@ See docs/power-profiles.md and qualification evidence, not the old manual script
 WiggleControl now has its own owning repository and issue; its native model probe
 found one concrete palm Resize shape failure in the pinned tract candidate.
 Continue its end-to-end goal there after this human-directed local dashboard update.
+
+## Supervised system-input sessions
+
+The panel's existing managed process lifecycle now optionally supervises finite
+WiggleControl sessions through `input SECONDS`. Preparation must be acknowledged
+by the UI before acquisition; Stop ends only its owned process group. The LOCAL
+badge distinguishes input from recording. Observed camera/microphone activity
+remains independent and works offline. WiggleControl retains gesture/input
+ownership and must be installed separately; no session starts at login.
+
+Receiving qualification observed preparation, input activity and camera-open with
+microphone inactive; Stop reaped the session and the camera closed. This proves
+session control, not hand recognition accuracy. See docs/qualification.md.

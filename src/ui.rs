@@ -140,26 +140,41 @@ unsafe extern "C" fn tick(data: W) -> i32 {
         now(),
     );
     let m = &s.managed;
-    let managed = match m.phase.as_str() {
-        "preparing" => format!(
-            "Preparando {} · aún sin captura",
-            m.mode.as_deref().unwrap_or("")
-        ),
-        "capturing" | "stopping" => format!(
-            "{} {} · {} s",
-            if m.phase == "stopping" {
-                "Deteniendo"
-            } else {
-                "Grabación gestionada"
-            },
-            m.mode.as_deref().unwrap_or(""),
-            now().saturating_sub(m.started_at)
-        ),
-        "completed" => "Grabación finalizada".into(),
-        "stopped" => "Captura detenida · proceso finalizado".into(),
-        "failed" => "Falló la captura · consultar registro local".into(),
-        "cancelled_before_capture" => "Captura cancelada antes de comenzar".into(),
-        _ => "Sin grabación gestionada".into(),
+    let managed = if m.activity == "input" {
+        match m.phase.as_str() {
+            "preparing" => "Preparando control por gestos · inicio pendiente".into(),
+            "capturing" => format!(
+                "Control por gestos · {} s · sin grabación",
+                now().saturating_sub(m.started_at)
+            ),
+            "stopping" => "Deteniendo control por gestos".into(),
+            "completed" => "Sesión de gestos finalizada".into(),
+            "stopped" => "Control por gestos detenido".into(),
+            "failed" => "Falló el control por gestos · consultar registro local".into(),
+            _ => "Sin sesión de gestos".into(),
+        }
+    } else {
+        match m.phase.as_str() {
+            "preparing" => format!(
+                "Preparando {} · aún sin captura",
+                m.mode.as_deref().unwrap_or("")
+            ),
+            "capturing" | "stopping" => format!(
+                "{} {} · {} s",
+                if m.phase == "stopping" {
+                    "Deteniendo"
+                } else {
+                    "Grabación gestionada"
+                },
+                m.mode.as_deref().unwrap_or(""),
+                now().saturating_sub(m.started_at)
+            ),
+            "completed" => "Grabación finalizada".into(),
+            "stopped" => "Captura detenida · proceso finalizado".into(),
+            "failed" => "Falló la captura · consultar registro local".into(),
+            "cancelled_before_capture" => "Captura cancelada antes de comenzar".into(),
+            _ => "Sin grabación gestionada".into(),
+        }
     };
     let remote = s
         .remote_activity
@@ -256,7 +271,11 @@ unsafe extern "C" fn tick(data: W) -> i32 {
             if m.phase == "preparing" {
                 "…"
             } else if ["capturing", "stopping"].contains(&m.phase.as_str()) {
-                "●"
+                if m.activity == "input" {
+                    "↔"
+                } else {
+                    "●"
+                }
             } else if m.phase == "failed" {
                 "!"
             } else {
@@ -410,7 +429,7 @@ pub fn run(
         gtk_widget_set_tooltip_text(expand, c("Expandir panel").as_ptr());
         let small_mic = badge(compact_box, "audio-input-microphone-symbolic", "MIC");
         let small_cam = badge(compact_box, "camera-video-symbolic", "CAM");
-        let small_rec = badge(compact_box, "media-record-symbolic", "REC");
+        let small_rec = badge(compact_box, "applications-system-symbolic", "LOCAL");
         let small_remote = badge(compact_box, "", "AII");
         let small_cpu = badge(compact_box, "", "CPU");
         let small_temperature = badge(compact_box, "", "TEMP");

@@ -40,6 +40,8 @@ impl Default for Devices {
 }
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct Managed {
+    #[serde(default)]
+    pub activity: String,
     pub mode: Option<String>,
     pub phase: String,
     pub started_at: u64,
@@ -127,6 +129,9 @@ pub fn atomic_json(path: &Path, value: &impl Serialize) -> std::io::Result<()> {
 pub enum Request {
     Status,
     Stop,
+    Input {
+        seconds: u32,
+    },
     View {
         compact: bool,
     },

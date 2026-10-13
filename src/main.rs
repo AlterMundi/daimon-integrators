@@ -41,6 +41,29 @@ impl Engine {
     }
     fn request(&mut self, request: Request) -> Value {
         match request {
+            Request::Input { seconds } => {
+                if !(1..=120).contains(&seconds) {
+                    return json!({"ok":false,"error":"input session must last 1–120 seconds"});
+                }
+                if self.child.is_some() || self.pending.is_some() {
+                    return json!({"ok":false,"error":"managed activity already active"});
+                }
+                if !Path::new("/usr/local/bin/wigglecontrol").exists()
+                    || !Path::new("/etc/wigglecontrol/config.json").exists()
+                {
+                    return json!({"ok":false,"error":"WiggleControl is not installed/configured"});
+                }
+                self.ui_ready.store(false, Ordering::SeqCst);
+                self.snapshot.managed = Managed {
+                    activity: "input".into(),
+                    mode: Some("hands".into()),
+                    phase: "preparing".into(),
+                    started_at: now(),
+                    ..Default::default()
+                };
+                self.pending = Some(("input".into(), seconds, String::new(), Instant::now()));
+                json!({"ok":true,"stage":"preparing","effect_observed":false})
+            }
             Request::Status => json!({"ok":true,"snapshot":self.snapshot}),
             Request::View { compact } => {
                 self.snapshot.compact = compact;
@@ -82,6 +105,7 @@ impl Engine {
                 }
                 self.ui_ready.store(false, Ordering::SeqCst);
                 self.snapshot.managed = Managed {
+                    activity: "recording".into(),
                     mode: Some(mode.clone()),
                     phase: "preparing".into(),
                     started_at: now(),
@@ -104,54 +128,70 @@ impl Engine {
                 && self.ui_ready.load(Ordering::SeqCst)
             {
                 let (mode, seconds, output, _) = self.pending.take().unwrap();
-                let mut cmd = Command::new("ffmpeg");
-                cmd.args(["-hide_banner", "-loglevel", "error", "-n"]);
-                if mode != "audio" {
+                let mut cmd = if mode == "input" {
+                    let mut cmd = Command::new("/usr/local/bin/wigglecontrol");
                     cmd.args([
-                        "-thread_queue_size",
-                        "512",
-                        "-f",
-                        "v4l2",
-                        "-input_format",
-                        "mjpeg",
-                        "-video_size",
-                        "640x480",
-                        "-framerate",
-                        "30",
-                        "-i",
-                        &self.devices.camera,
+                        "run",
+                        &seconds.to_string(),
+                        "/etc/wigglecontrol/config.json",
                     ]);
-                }
-                if mode != "video" {
-                    cmd.args([
-                        "-thread_queue_size",
-                        "512",
-                        "-f",
-                        "alsa",
-                        "-ar",
-                        "48000",
-                        "-i",
-                        &self.devices.audio,
-                    ]);
-                }
-                cmd.args(["-t", &seconds.to_string()]);
-                if mode != "audio" {
-                    cmd.args([
-                        "-c:v",
-                        "libx264",
-                        "-preset",
-                        "ultrafast",
-                        "-pix_fmt",
-                        "yuv420p",
-                    ]);
-                }
-                if mode != "video" {
-                    cmd.args(["-c:a", "aac"]);
-                }
-                if mode != "audio" {
-                    cmd.args(["-movflags", "+faststart"]);
-                }
-                let log = Path::new(&output).with_extension("capture.log");
+                    cmd
+                } else {
+                    let mut cmd = Command::new("ffmpeg");
+                    cmd.args(["-hide_banner", "-loglevel", "error", "-n"]);
+                    if mode != "audio" {
+                        cmd.args([
+                            "-thread_queue_size",
+                            "512",
+                            "-f",
+                            "v4l2",
+                            "-input_format",
+                            "mjpeg",
+                            "-video_size",
+                            "640x480",
+                            "-framerate",
+                            "30",
+                            "-i",
+                            &self.devices.camera,
+                        ]);
+                    }
+                    if mode != "video" {
+                        cmd.args([
+                            "-thread_queue_size",
+                            "512",
+                            "-f",
+                            "alsa",
+                            "-ar",
+                            "48000",
+                            "-i",
+                            &self.devices.audio,
+                        ]);
+                    }
+                    cmd.args(["-t", &seconds.to_string()]);
+                    if mode != "audio" {
+                        cmd.args([
+                            "-c:v",
+                            "libx264",
+                            "-preset",
+                            "ultrafast",
+                            "-pix_fmt",
+                            "yuv420p",
+                        ]);
+                    }
+                    if mode != "video" {
+                        cmd.args(["-c:a", "aac"]);
+                    }
+                    if mode != "audio" {
+                        cmd.args(["-movflags", "+faststart"]);
+                    }
+                    cmd.arg(&output);
+                    cmd
+                };
+                let log = if mode == "input" {
+                    runtime().join(format!("input-{}.log", now()))
+                } else {
+                    Path::new(&output).with_extension("capture.log")
+                };
                 match fs::OpenOptions::new()
                     .write(true)
                     .create_new(true)
@@ -159,9 +199,15 @@ impl Engine {
                     .open(log)
                 {
                     Ok(log) => {
-                        cmd.arg(output)
-                            .stdin(Stdio::null())
-                            .stdout(Stdio::null())
+                        let stdout = if mode == "input" {
+                            log.try_clone()
+                                .map(Stdio::from)
+                                .unwrap_or_else(|_| Stdio::null())
+                        } else {
+                            Stdio::null()
+                        };
+                        cmd.stdin(Stdio::null())
+                            .stdout(stdout)
                             .stderr(log)
                             .process_group(0);
                         match cmd.spawn() {
@@ -423,6 +469,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 })?
             )
         }
+        Some("input") if args.len() == 3 => {
+            let response = control(Request::Input {
+                seconds: args[2].parse()?,
+            })?;
+            println!("{response}");
+            if response["ok"] != true {
+                std::process::exit(1);
+            }
+        }
         Some("capture") if args.len() == 5 => {
             let req = Request::Capture {
                 mode: args[2].clone(),
@@ -447,7 +502,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err("built without UI".into());
         }
         _ => {
-            eprintln!("Usage: daimon-integrators panel|observe|status|stop|power auto|quiet|silent|capture MODE SECONDS ABSOLUTE_OUTPUT");
+            eprintln!("Usage: daimon-integrators panel|observe|status|stop|input SECONDS|power auto|quiet|silent|capture MODE SECONDS ABSOLUTE_OUTPUT");
             std::process::exit(2);
         }
     }
@@ -457,6 +512,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 #[cfg(test)]
 mod engine_tests {
     use super::*;
+    #[test]
+    fn input_duration_is_bounded_before_model_or_camera_start() {
+        let mut e = Engine::new(Devices::default(), Arc::new(AtomicBool::new(false)));
+        for seconds in [0, 121] {
+            assert_eq!(e.request(Request::Input { seconds })["ok"], false);
+            assert!(e.pending.is_none());
+            assert!(e.child.is_none());
+        }
+    }
     #[test]
     fn no_capture_if_ui_cannot_acknowledge_preparing() {
         let mut e = Engine::new(Devices::default(), Arc::new(AtomicBool::new(false)));

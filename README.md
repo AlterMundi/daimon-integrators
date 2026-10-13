@@ -20,6 +20,8 @@ pointers; Telecodex owns native session activity and Stop.
 - Microphone/camera usage indicators with explicit stale/incomplete/unknown states.
 - Managed finite recording, visible preparation before acquisition, elapsed time and
   a **Stop my capture** control; arbitrary external applications are never killed.
+- Optional finite WiggleControl input sessions, with visible preparation and scoped
+  Stop. Input activity is shown separately from recording and observed camera use.
 - Optional aggregate Telecodex activity, via the existing authorized dashboard
   provider, expiring when disconnected. Local device observation does not depend
   on the VPS. No model, Matrix inbox consumer or continuous recording is started.
@@ -44,6 +46,7 @@ python3 -m unittest discover -s tests
 ```text
 daimon-integrators panel
 daimon-integrators status
+daimon-integrators input 30
 daimon-integrators power silent
 daimon-integrators power quiet
 daimon-integrators power auto
@@ -56,6 +59,13 @@ daimon-integrators stop
 The control socket is local, owner-only. An acknowledgment is not capture/stop
 completion; read `status` and observed device states. Audio/video are retained
 only at the explicit local output path, never published by the panel.
+
+`input SECONDS` requires a separately installed/configured WiggleControl and
+accepts 1–120 seconds. It opens the camera only after the panel acknowledges
+preparation. The same Stop control ends only the managed process group; observed
+camera use remains independent. It records no media. Local session summaries use
+owner-only runtime logs, cleared with the login runtime directory. No input
+session is started at boot. See WiggleControl for gesture/device qualification.
 
 Initial ownership/design: [Cluster #212](https://github.com/nicoechaniz/daimon-cluster/issues/212)
 and [panel #213](https://github.com/nicoechaniz/daimon-cluster/issues/213).

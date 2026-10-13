@@ -140,3 +140,15 @@ microphone remained inactive. Ten Rust tests, Python bridge checks and isolated
 installer snapshot/retry/rollback fixtures passed. Mode-specific receiving
 workloads remain private. Actual boot adoption and human visual/thermal preference
 acceptance remain unverified; no reboot or sensor capture was performed.
+
+## Finite WiggleControl supervision — 2026-10-13
+
+The receiving panel accepted `input 20`, acknowledged preparation before starting
+the installed native runtime, and reported managed activity `input` separately
+from recording. The independent observer reported camera-open and microphone
+inactive. A screenshot confirmed the camera and LOCAL input markers above the
+task-owned fullscreen qualification page. Scoped Stop ended the managed process
+group; subsequent status reported stopped and actual camera use false. No stored
+media or microphone capture was produced. This qualifies start/Stop and visible
+ownership, not human hand accuracy or touch semantics. Hardware bindings and
+binary rollback locations stay in the receiving private overlay.
