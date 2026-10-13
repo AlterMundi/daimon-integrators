@@ -13,7 +13,7 @@ systemctl --user daemon-reload
 systemctl --user restart daimon-integrators-panel.service
 ```
 
-The first installer invocation snapshots replaced files or records their absence
+The first installer invocation atomically snapshots replaced files or records their absence
 under a root-only rollback directory. The observer is a restricted system service;
 the panel is an ordinary user's service with no new privileges. A new desktop
 autostart entry starts it after login. No capture starts on login/restart. Existing
@@ -57,3 +57,14 @@ The UI remembers compact/expanded mode in its user-local panel settings.
 control socket. The view setting grants no device control or remote authority.
 
 View requests are asynchronous. `compact` is requested mode; `ui_compact` confirms the widget mode was applied. Wait for UI acknowledgment/settings persistence before restarting to test retained preference.
+
+The installer refuses an incomplete retained snapshot before mutation. Failed
+pre-mutation staging is cleaned while originals remain untouched. Root plus
+bubblewrap can qualify file effects in a disposable network-disabled fixture:
+
+```sh
+sudo python3 tests/installation_fixture.py --scratch "$PWD/target/installation-fixtures"
+```
+
+That fixture mocks services; actual receiving service/startup/rollback still
+requires separate qualified device evidence.

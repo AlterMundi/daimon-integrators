@@ -8,9 +8,10 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libgtk-layer-shell-dev
+      - run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libgtk-layer-shell-dev bubblewrap
       - run: cargo fmt --check
       - run: cargo test --locked
       - run: cargo clippy --all-targets --locked -- -D warnings
       - run: cargo build --release --locked
       - run: python3 -m unittest discover -s tests
+      - run: sudo python3 tests/installation_fixture.py --scratch "$PWD/target/installation-fixtures"

@@ -56,3 +56,17 @@ After replacing recurring PipeWire snapshot processes with one incremental
 monitor, verified source start and return to idle. A steady 10-second sample
 measured panel 0.53% of one CPU core / 41728 KiB RSS, partial observer 1.99% /
 10072 KiB RSS. These are dated preview measurements, not fleet capacity claims.
+
+## Installer interruption qualification — 2026-10-13
+
+An isolated, network-disabled bubblewrap namespace injected a snapshot copy
+failure, retried installation and rolled back. The initial installer restored
+the wrong binary because it published an incomplete manifest before its copies
+finished. The corrected installer publishes the complete staging directory
+atomically before receiving mutation and checks retained backups on retries.
+
+The same fixture now passes interrupted-copy/retry/rollback with original
+contents, owners and modes preserved; fresh installation retried twice then
+removed only its installed files. Administrative SSH sentinel contents remained
+unchanged throughout. Services were mocked inside the namespace: this proves
+file-effect qualification, not real systemd or receiving privileged deployment.
