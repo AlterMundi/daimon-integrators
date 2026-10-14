@@ -26,6 +26,8 @@ pub struct Guidance {
 #[derive(Clone, Debug, Deserialize)]
 pub struct Frame {
     pub sequence: u32,
+    #[serde(default = "default_freshness_ms")]
+    pub freshness_ms: u64,
     #[serde(default)]
     pub guided: Option<Guidance>,
     #[serde(default)]
@@ -45,6 +47,9 @@ pub struct Frame {
     pub presses: u64,
     pub test_phase: String,
     pub remaining_ms: Option<u64>,
+}
+fn default_freshness_ms() -> u64 {
+    150
 }
 fn nullable_reason<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
     Ok(Option::<String>::deserialize(deserializer)?.unwrap_or_default())
@@ -85,7 +90,8 @@ impl Frame {
         {
             return Err(io::Error::other("invalid calibration feedback"));
         }
-        if !(1.0..=8192.0).contains(&frame.width)
+        if !(50..=1000).contains(&frame.freshness_ms)
+            || !(1.0..=8192.0).contains(&frame.width)
             || !(1.0..=8192.0).contains(&frame.height)
             || !frame.age_ms.is_finite()
             || frame.age_ms < 0.0
@@ -105,10 +111,11 @@ impl Frame {
     }
     pub fn visible(&self, received: Instant, now: Instant) -> bool {
         self.fresh
-            && self.age_ms + now.saturating_duration_since(received).as_secs_f64() * 1000.0 < 150.0
+            && self.age_ms + now.saturating_duration_since(received).as_secs_f64() * 1000.0
+                < self.freshness_ms as f64
     }
     // Visual continuity may retain an aged hand, with delayed coloring, while
-    // input freshness and press indication keep their stricter 150 ms bound.
+    // input freshness and press indication use the selected producer bound.
     pub fn renderable(&self, received: Instant, now: Instant) -> bool {
         self.age_ms + now.saturating_duration_since(received).as_secs_f64() * 1000.0 < 300.0
     }
@@ -273,6 +280,20 @@ mod tests {
             frame.screen_point([0.0, 480.0], 1920.0, 1080.0),
             [1920.0, 1080.0]
         );
+    }
+    #[test]
+    fn selected_freshness_window_is_bounded_and_legacy_defaults_stay_150ms() {
+        let mut f = frame();
+        let at = Instant::now();
+        assert_eq!(f.freshness_ms, 150);
+        f.freshness_ms = 300;
+        f.age_ms = 200.0;
+        assert!(f.visible(at, at + Duration::from_millis(99)));
+        assert!(!f.visible(at, at + Duration::from_millis(100)));
+        f.fresh = false;
+        assert!(!f.visible(at, at));
+        let bytes=br#"{"sequence":1,"width":640,"height":480,"landmarks":null,"fresh":true,"freshness_ms":1001,"age_ms":0,"pinch_state":"pressed","presses":1,"test_phase":"testing","remaining_ms":1000}"#;
+        assert!(Frame::parse(bytes).is_err());
     }
     #[test]
     fn malformed_and_unbounded_feedback_is_rejected() {

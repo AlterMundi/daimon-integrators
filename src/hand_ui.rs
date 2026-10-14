@@ -698,6 +698,7 @@ pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error
                     ];
                     Some(Frame {
                         sequence: 0,
+                        freshness_ms: 150,
                         guided: None,
                         input_enabled: Some(false),
                         screen_target: None,

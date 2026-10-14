@@ -130,3 +130,8 @@ The entire skeleton becomes mint green while the current fresh producer state
 reports an active held pinch, and returns to cyan on release or unknown/stale
 state. Retained geometry cannot preserve a green held indication. This complements
 the onset pulse without changing gesture recognition or injecting input.
+
+Feedback uses the producer's bounded `freshness_ms` metadata (50..1000 ms),
+falling back to150 ms for legacy producers. The selected300 ms gesture trial
+therefore shares one window with recognition and the device writer, without
+changing onset-pulse duration or retaining a held indication indefinitely.
