@@ -224,3 +224,18 @@ separate. Raw sampling feedback does not ask the human to reach already-mapped
 screen edges. The classic producer route remains available. Tests (including
 no-UI build) and all-target Clippy passed. Physical comfort/precision are pending.
 The requested last-skeleton retention during missing data is deferred.
+
+## Guided calibration UI timing
+
+The optional finite hand overlay now renders guided MOVE / HOLD STILL / WAIT FOR
+TRACKING / completion/retry states with a producer-tied step countdown. Each step
+has its own paint acknowledgment, emitted after fresh full-hand feedback is drawn
+on the matching output; prior-step receipts do not acknowledge a new step. Manual
+calibration controls remain insensitive during guidance, while Stop is available.
+UI expiry can be up to 180 seconds to cover the separate camera-only 150-second
+bound; original production panel and device-writer bounds are unchanged.
+
+The feedback parser now accepts null blocked_reason as empty text, matching the
+producer's pressed-pinch state. Previously valid pressed metadata could fail parsing.
+A regression covers that case and invalid guided steps. Source tests/Clippy passed;
+actual guided timing/comfort remains pending. No physical trial was started here.

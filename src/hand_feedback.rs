@@ -16,8 +16,18 @@ pub struct CalibrationState {
     pub output: [u32; 2],
 }
 #[derive(Clone, Debug, Deserialize)]
+pub struct Guidance {
+    pub step: usize,
+    pub phase: String,
+    pub remaining_ms: Option<u64>,
+    pub instruction: String,
+    pub result: Option<String>,
+}
+#[derive(Clone, Debug, Deserialize)]
 pub struct Frame {
     pub sequence: u32,
+    #[serde(default)]
+    pub guided: Option<Guidance>,
     #[serde(default)]
     pub screen_target: Option<[f64; 2]>,
     #[serde(default)]
@@ -28,14 +38,30 @@ pub struct Frame {
     pub fresh: bool,
     pub age_ms: f64,
     pub pinch_state: String,
+    #[serde(default, deserialize_with = "nullable_reason")]
     pub blocked_reason: String,
     pub presses: u64,
     pub test_phase: String,
     pub remaining_ms: Option<u64>,
 }
+fn nullable_reason<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<String, D::Error> {
+    Ok(Option::<String>::deserialize(deserializer)?.unwrap_or_default())
+}
 impl Frame {
     pub fn parse(body: &[u8]) -> io::Result<Self> {
         let frame: Self = serde_json::from_slice(body)?;
+        if frame.guided.as_ref().is_some_and(|g| {
+            g.step > 5
+                || !matches!(
+                    g.phase.as_str(),
+                    "waiting" | "move" | "hold" | "complete" | "retry"
+                )
+                || g.remaining_ms.is_some_and(|n| n > 20_000)
+                || g.instruction.len() > 128
+                || g.result.as_ref().is_some_and(|s| s.len() > 256)
+        }) {
+            return Err(io::Error::other("invalid guided feedback"));
+        }
         if frame.screen_target.is_some_and(|p| !valid_target(p))
             || frame.calibration.as_ref().is_some_and(|c| {
                 !matches!(
@@ -137,6 +163,17 @@ mod tests {
     use super::*;
     fn frame() -> Frame {
         Frame::parse(br#"{"sequence":1,"width":640,"height":480,"landmarks":null,"fresh":true,"age_ms":50,"pinch_state":"open","blocked_reason":"close_threshold","presses":0,"test_phase":"testing","remaining_ms":1000}"#).unwrap()
+    }
+    #[test]
+    fn pressed_feedback_accepts_no_block_reason_and_guided_bounds_are_checked() {
+        let mut value = serde_json::json!({"sequence":1,"width":640,"height":480,"landmarks":null,"fresh":true,"age_ms":50,"pinch_state":"pressed","blocked_reason":null,"presses":1,"test_phase":"testing","remaining_ms":1000,
+            "guided":{"step":0,"phase":"waiting","remaining_ms":null,"instruction":"Move upper left","result":null}});
+        let f = Frame::parse(&serde_json::to_vec(&value).unwrap()).unwrap();
+        assert_eq!(f.pinch_state, "pressed");
+        assert!(f.blocked_reason.is_empty());
+        assert_eq!(f.guided.unwrap().phase, "waiting");
+        value["guided"]["step"] = 6.into();
+        assert!(Frame::parse(&serde_json::to_vec(&value).unwrap()).is_err());
     }
     #[test]
     fn stale_feedback_cannot_keep_a_hand_visible() {

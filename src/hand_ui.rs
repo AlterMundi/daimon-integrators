@@ -102,6 +102,7 @@ struct Ui {
     command: Arc<Mutex<Option<&'static str>>>,
     cal_buttons: Vec<(W, &'static str)>,
     actual_output: Arc<Mutex<[u32; 2]>>,
+    painted_step: Arc<std::sync::atomic::AtomicUsize>,
 }
 unsafe fn text(cr: W, x: f64, y: f64, s: &str, size: f64) {
     cairo_set_font_size(cr, size);
@@ -142,7 +143,15 @@ unsafe extern "C" fn draw(area: W, cr: W, data: W) -> i32 {
     cairo_arc(cr, 62.0, 58.0, 10.0, 0.0, std::f64::consts::TAU);
     cairo_fill(cr);
     cairo_set_source_rgba(cr, 0.96, 0.94, 0.90, 1.0);
-    let label = if ui.demo {
+    let label = if let Some(g) = snapshot.as_ref().and_then(|(f, _)| f.guided.as_ref()) {
+        match g.phase.as_str() {
+            "waiting" => "WAIT FOR TRACKING",
+            "move" => "MOVE TO POSITION",
+            "hold" => "HOLD STILL",
+            "complete" => "CALIBRATION COMPLETE",
+            _ => "CALIBRATION NEEDS RETRY",
+        }
+    } else if ui.demo {
         "DEMO // NO INPUT"
     } else if testing
         && snapshot.as_ref().is_some_and(|(frame, _)| {
@@ -161,7 +170,17 @@ unsafe extern "C" fn draw(area: W, cr: W, data: W) -> i32 {
         "PREPARING // LOCAL HANDS"
     };
     text(cr, 86.0, 69.0, label, 26.0);
-    let seconds = remaining.map(|ms| ms.div_ceil(1000));
+    let seconds = if let Some((g, at)) = snapshot
+        .as_ref()
+        .and_then(|(f, at)| f.guided.as_ref().map(|g| (g, at)))
+    {
+        g.remaining_ms.map(|ms| {
+            ms.saturating_sub(now.saturating_duration_since(*at).as_millis() as u64)
+                .div_ceil(1000)
+        })
+    } else {
+        remaining.map(|ms| ms.div_ceil(1000))
+    };
     text(
         cr,
         550.0,
@@ -227,7 +246,9 @@ unsafe extern "C" fn draw(area: W, cr: W, data: W) -> i32 {
             cairo_rectangle(cr, 24.0, 140.0, 1100.0, 80.0);
             cairo_fill(cr);
             cairo_set_source_rgba(cr, 0.96, 0.76, 0.51, 1.0);
-            let guide = if cal.output != [width as u32, height as u32] {
+            let guide = if let Some(g) = &frame.guided {
+                &g.instruction
+            } else if cal.output != [width as u32, height as u32] {
                 "DISPLAY SIZE MISMATCH // STOP INPUT"
             } else {
                 match cal.stage.as_str() {
@@ -250,11 +271,36 @@ unsafe extern "C" fn draw(area: W, cr: W, data: W) -> i32 {
                 cr,
                 44.0,
                 203.0,
-                &format!(
-                    "Samples {} // {}",
-                    cal.samples,
-                    cal.message.chars().take(65).collect::<String>()
-                ),
+                &if let Some(g) = &frame.guided {
+                    let ms = g.remaining_ms.map(|n| {
+                        n.saturating_sub(now.saturating_duration_since(received).as_millis() as u64)
+                    });
+                    format!(
+                        "Step {}/6 // {} // {} // {}",
+                        g.step + 1,
+                        match g.phase.as_str() {
+                            "waiting" => "WAITING FOR TRACKING",
+                            "move" => "MOVE",
+                            "hold" => "HOLD STILL",
+                            "complete" => "COMPLETE",
+                            _ => "RETRY",
+                        },
+                        ms.map(|n| format!("{}s", n.div_ceil(1000)))
+                            .unwrap_or_else(|| "--".into()),
+                        g.result
+                            .as_deref()
+                            .unwrap_or("No pinch needed")
+                            .chars()
+                            .take(50)
+                            .collect::<String>()
+                    )
+                } else {
+                    format!(
+                        "Samples {} // {}",
+                        cal.samples,
+                        cal.message.chars().take(65).collect::<String>()
+                    )
+                },
                 19.0,
             );
             if let Some(p) = cal.corner_target {
@@ -356,6 +402,14 @@ unsafe extern "C" fn draw(area: W, cr: W, data: W) -> i32 {
                 }
             }
         }
+        if frame.guided.as_ref().is_some_and(|g| g.phase == "waiting")
+            && fresh
+            && frame.landmarks.is_some()
+            && frame.blocked_reason == "Calibration: hand visible; hold steady"
+        {
+            ui.painted_step
+                .store(frame.guided.as_ref().unwrap().step, Ordering::SeqCst);
+        }
         ui.painted.store(true, Ordering::SeqCst);
     }
     1
@@ -371,6 +425,7 @@ unsafe extern "C" fn tick(data: W) -> i32 {
             let enabled = frame.calibration.as_ref().is_some_and(|c| {
                 let recent = Instant::now().saturating_duration_since(*at) < Duration::from_secs(2);
                 recent
+                    && frame.guided.is_none()
                     && frame.remaining_ms.is_none_or(|n| {
                         n > Instant::now().saturating_duration_since(*at).as_millis() as u64
                     })
@@ -422,8 +477,8 @@ calibration_button!(cancel_calibration, "/calibration/cancel");
 calibration_button!(accept_calibration, "/calibration/accept");
 calibration_button!(rollback_calibration, "/calibration/rollback");
 pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error::Error>> {
-    if !(1..=120).contains(&seconds) || (!demo && port == 0) {
-        return Err("hand overlay requires a port and 1..120 seconds".into());
+    if !(1..=180).contains(&seconds) || (!demo && port == 0) {
+        return Err("hand overlay requires a port and 1..180 seconds".into());
     }
     unsafe {
         if gtk_init_check(ptr::null_mut(), ptr::null_mut()) == 0 || gtk_layer_is_supported() == 0 {
@@ -467,6 +522,7 @@ pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error
         let until = Instant::now() + Duration::from_secs(seconds as u64);
         let command = Arc::new(Mutex::new(None));
         let actual_output = Arc::new(Mutex::new([0, 0]));
+        let painted_step = Arc::new(std::sync::atomic::AtomicUsize::new(usize::MAX));
         let data = Box::into_raw(Box::new(Ui {
             window,
             area,
@@ -478,6 +534,7 @@ pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error
             command: command.clone(),
             cal_buttons: Vec::new(),
             actual_output: actual_output.clone(),
+            painted_step: painted_step.clone(),
         }));
         g_signal_connect_data(
             area,
@@ -552,6 +609,7 @@ pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error
         let worker = thread::spawn(move || {
             let mut acknowledged = false;
             let mut stop_accepted = false;
+            let mut acknowledged_step = None;
             while Instant::now() < until && !worker_stop.load(Ordering::SeqCst) {
                 let pending = command.lock().unwrap().take();
                 if let Some(path) = pending {
@@ -595,6 +653,7 @@ pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error
                     ];
                     Some(Frame {
                         sequence: 0,
+                        guided: None,
                         screen_target: None,
                         calibration: None,
                         width: 640.0,
@@ -631,6 +690,36 @@ pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error
                     }
                     *slot = Some((frame, received));
                     drop(slot);
+                    if !demo {
+                        let guidance = shared
+                            .lock()
+                            .unwrap()
+                            .as_ref()
+                            .and_then(|(f, _)| f.guided.clone());
+                        if let Some(g) = guidance {
+                            if g.phase == "waiting"
+                                && acknowledged_step != Some(g.step)
+                                && painted_step.load(Ordering::SeqCst) == g.step
+                            {
+                                let dimensions_ok =
+                                    shared.lock().unwrap().as_ref().is_some_and(|(f, _)| {
+                                        f.calibration.as_ref().is_some_and(|c| {
+                                            c.output == *actual_output.lock().unwrap()
+                                        })
+                                    });
+                                if dimensions_ok
+                                    && hand_feedback::request(
+                                        port,
+                                        "POST",
+                                        &format!("/guided-ready/{}", g.step),
+                                    )
+                                    .is_ok()
+                                {
+                                    acknowledged_step = Some(g.step);
+                                }
+                            }
+                        }
+                    }
                     if !demo && !acknowledged && painted.load(Ordering::SeqCst) {
                         let dimensions_ok =
                             shared.lock().unwrap().as_ref().is_some_and(|(frame, _)| {
