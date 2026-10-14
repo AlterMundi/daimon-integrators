@@ -29,6 +29,8 @@ pub struct Frame {
     #[serde(default)]
     pub guided: Option<Guidance>,
     #[serde(default)]
+    pub input_enabled: Option<bool>,
+    #[serde(default)]
     pub screen_target: Option<[f64; 2]>,
     #[serde(default)]
     pub calibration: Option<CalibrationState>,
@@ -118,6 +120,22 @@ impl Frame {
         ]
     }
 }
+/// Retain at most one metadata skeleton. Never refresh its timestamp or press
+/// state when the incoming observation is missing; input uses the live frame.
+pub fn retain_hand(
+    last: &mut Option<(Frame, Instant)>,
+    current: &Frame,
+    received: Instant,
+) -> Option<(Frame, Instant)> {
+    if current.landmarks.is_some()
+        && last
+            .as_ref()
+            .is_none_or(|(old, _)| old.sequence != current.sequence)
+    {
+        *last = Some((current.clone(), received));
+    }
+    last.clone()
+}
 fn valid_target(p: [f64; 2]) -> bool {
     p.iter().all(|n| n.is_finite() && (0.0..=1.0).contains(n))
 }
@@ -163,6 +181,33 @@ mod tests {
     use super::*;
     fn frame() -> Frame {
         Frame::parse(br#"{"sequence":1,"width":640,"height":480,"landmarks":null,"fresh":true,"age_ms":50,"pinch_state":"open","blocked_reason":"close_threshold","presses":0,"test_phase":"testing","remaining_ms":1000}"#).unwrap()
+    }
+    #[test]
+    fn missing_geometry_retains_last_hand_without_refreshing_age_or_input() {
+        let at = Instant::now();
+        let mut f = frame();
+        f.landmarks = Some(vec![[1.0, 2.0]; 21]);
+        let mut last = None;
+        let held = retain_hand(&mut last, &f, at).unwrap();
+        let mut missing = f.clone();
+        missing.sequence += 1;
+        missing.landmarks = None;
+        missing.fresh = false;
+        let retained = retain_hand(&mut last, &missing, at + Duration::from_secs(1)).unwrap();
+        assert_eq!(retained.0.sequence, held.0.sequence);
+        assert_eq!(retained.1, at);
+        assert!(!retained.0.visible(retained.1, at + Duration::from_secs(1)));
+        assert!(missing.landmarks.is_none());
+        assert!(!missing.visible(at, at));
+        let mut next = f.clone();
+        next.sequence += 2;
+        assert_eq!(
+            retain_hand(&mut last, &next, at + Duration::from_secs(2))
+                .unwrap()
+                .0
+                .sequence,
+            next.sequence
+        );
     }
     #[test]
     fn pressed_feedback_accepts_no_block_reason_and_guided_bounds_are_checked() {

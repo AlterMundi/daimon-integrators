@@ -239,3 +239,20 @@ The feedback parser now accepts null blocked_reason as empty text, matching the
 producer's pressed-pinch state. Previously valid pressed metadata could fail parsing.
 A regression covers that case and invalid guided steps. Source tests/Clippy passed;
 actual guided timing/comfort remains pending. No physical trial was started here.
+
+## Stable geometry independent of input eligibility
+
+Nicolás reported repeated whole-hand pink/cyan flicker and unusable pinch/drag.
+Source rendering changed whole-hand color at the consumer's 150 ms freshness
+boundary and removed geometry after 300 ms or a missing-landmark frame. The optional
+native overlay now retains one last metadata skeleton without refreshing its
+receipt time, keeps bone color cyan, and marks delayed retained geometry explicitly
+as LAST KNOWN HAND / NO NEW GEOMETRY. Current live metadata alone controls press
+indication/Stop/readiness; retained geometry cannot acknowledge a guided step or
+keep a click eligible. It disappears at test expiry/overlay shutdown.
+
+A regression verifies missing geometry retention, unchanged timestamp/input
+eligibility and replacement by a new sequence. Normal/no-UI tests and Clippy passed.
+Optional input_enabled metadata now distinguishes camera-only tracking from native
+input in the UI. This addresses presentation behavior, not proved pinch accuracy;
+actual gesture failure diagnosis and physical acceptance remain outstanding.

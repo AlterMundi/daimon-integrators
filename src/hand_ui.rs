@@ -103,6 +103,7 @@ struct Ui {
     cal_buttons: Vec<(W, &'static str)>,
     actual_output: Arc<Mutex<[u32; 2]>>,
     painted_step: Arc<std::sync::atomic::AtomicUsize>,
+    last_hand: Mutex<Option<(Frame, Instant)>>,
 }
 unsafe fn text(cr: W, x: f64, y: f64, s: &str, size: f64) {
     cairo_set_font_size(cr, size);
@@ -153,6 +154,12 @@ unsafe extern "C" fn draw(area: W, cr: W, data: W) -> i32 {
         }
     } else if ui.demo {
         "DEMO // NO INPUT"
+    } else if testing
+        && snapshot
+            .as_ref()
+            .is_some_and(|(f, _)| f.input_enabled == Some(false))
+    {
+        "TRACKING // NO INPUT"
     } else if testing
         && snapshot.as_ref().is_some_and(|(frame, _)| {
             frame
@@ -318,28 +325,32 @@ unsafe extern "C" fn draw(area: W, cr: W, data: W) -> i32 {
                 cairo_stroke(cr);
             }
         }
-        if frame.renderable(received, now) && remaining != Some(0) {
-            if let Some(points) = &frame.landmarks {
+        // Keep geometry independent of click eligibility. An aged/absent
+        // observation must not erase the last known hand or create a press.
+        let visual =
+            hand_feedback::retain_hand(&mut ui.last_hand.lock().unwrap(), &frame, received);
+        if remaining != Some(0) {
+            if let Some((visual, visual_received)) = visual {
+                let visual_delayed = !visual.renderable(visual_received, now);
+                let points = visual.landmarks.as_ref().unwrap();
                 let center = [
                     (points[5][0] + points[17][0]) / 2.0,
                     (points[5][1] + points[17][1]) / 2.0,
                 ];
-                let anchor = frame
+                let anchor = visual
                     .screen_target
                     .filter(|_| {
-                        frame
+                        visual
                             .calibration
                             .as_ref()
                             .is_none_or(|c| matches!(c.stage.as_str(), "active" | "review"))
                     })
                     .map(|p| [p[0] * width, p[1] * height])
-                    .unwrap_or_else(|| frame.screen_point(center, width, height));
+                    .unwrap_or_else(|| visual.screen_point(center, width, height));
                 if pressed {
                     cairo_set_source_rgba(cr, 0.66, 0.86, 0.78, 1.0);
-                } else if fresh {
-                    cairo_set_source_rgba(cr, 0.96, 0.76, 0.51, 1.0);
                 } else {
-                    cairo_set_source_rgba(cr, 0.96, 0.76, 0.51, 0.45);
+                    cairo_set_source_rgba(cr, 0.96, 0.76, 0.51, 0.9);
                 }
                 cairo_set_line_width(cr, 3.0);
                 cairo_new_path(cr);
@@ -350,10 +361,17 @@ unsafe extern "C" fn draw(area: W, cr: W, data: W) -> i32 {
                     .iter()
                     .map(|p| [anchor[0] - (p[0] - center[0]), anchor[1] + p[1] - center[1]])
                     .collect();
-                if fresh {
-                    cairo_set_source_rgba(cr, 0.53, 0.84, 0.93, 0.9);
-                } else {
-                    cairo_set_source_rgba(cr, 0.96, 0.76, 0.51, 0.45);
+                // Cyan is geometry, not a click/freshness state. Mark extended
+                // delay in the status box instead of flickering the whole hand.
+                cairo_set_source_rgba(cr, 0.53, 0.84, 0.93, 0.9);
+                if visual_delayed {
+                    text(
+                        cr,
+                        x + 24.0,
+                        y + 128.0,
+                        "LAST KNOWN HAND // NO NEW GEOMETRY",
+                        16.0,
+                    );
                 }
                 cairo_set_line_width(cr, 4.0);
                 for (a, b) in [
@@ -535,6 +553,7 @@ pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error
             cal_buttons: Vec::new(),
             actual_output: actual_output.clone(),
             painted_step: painted_step.clone(),
+            last_hand: Mutex::new(None),
         }));
         g_signal_connect_data(
             area,
@@ -654,6 +673,7 @@ pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error
                     Some(Frame {
                         sequence: 0,
                         guided: None,
+                        input_enabled: Some(false),
                         screen_target: None,
                         calibration: None,
                         width: 640.0,
