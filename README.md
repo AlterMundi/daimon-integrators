@@ -135,3 +135,8 @@ Feedback uses the producer's bounded `freshness_ms` metadata (50..1000 ms),
 falling back to150 ms for legacy producers. The selected300 ms gesture trial
 therefore shares one window with recognition and the device writer, without
 changing onset-pulse duration or retaining a held indication indefinitely.
+
+Recorded camera-only trial feedback explicitly shows RECORDING // NO INPUT.
+Experimental metric3D pinch metadata displays the estimated fingertip gap in
+millimetres; recognized state still drives the pulse and held skeleton color.
+Recording/playback lives in WiggleControl, not this observer or panel.

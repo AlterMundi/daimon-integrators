@@ -160,7 +160,11 @@ unsafe extern "C" fn draw(area: W, cr: W, data: W) -> i32 {
             .as_ref()
             .is_some_and(|(f, _)| f.input_enabled == Some(false))
     {
-        "TRACKING // NO INPUT"
+        if snapshot.as_ref().is_some_and(|(f, _)| f.recording) {
+            "RECORDING // NO INPUT"
+        } else {
+            "TRACKING // NO INPUT"
+        }
     } else if testing
         && snapshot.as_ref().is_some_and(|(frame, _)| {
             frame
@@ -242,11 +246,17 @@ unsafe extern "C" fn draw(area: W, cr: W, data: W) -> i32 {
             cr,
             x + 24.0,
             y + 105.0,
-            &format!(
-                "Press intents {} // frame {:.0} ms",
-                frame.presses,
-                frame.age_ms + now.saturating_duration_since(received).as_secs_f64() * 1000.0
-            ),
+            &frame
+                .pinch_distance_m
+                .map(|d| format!("Presses {} // 3D gap: {:.1} mm", frame.presses, d * 1000.0))
+                .unwrap_or_else(|| {
+                    format!(
+                        "Press intents {} // frame {:.0} ms",
+                        frame.presses,
+                        frame.age_ms
+                            + now.saturating_duration_since(received).as_secs_f64() * 1000.0
+                    )
+                }),
             20.0,
         );
         if let Some(cal) = &frame.calibration {
@@ -699,6 +709,8 @@ pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error
                     Some(Frame {
                         sequence: 0,
                         freshness_ms: 150,
+                        recording: false,
+                        pinch_distance_m: None,
                         guided: None,
                         input_enabled: Some(false),
                         screen_target: None,

@@ -29,6 +29,10 @@ pub struct Frame {
     #[serde(default = "default_freshness_ms")]
     pub freshness_ms: u64,
     #[serde(default)]
+    pub recording: bool,
+    #[serde(default)]
+    pub pinch_distance_m: Option<f64>,
+    #[serde(default)]
     pub guided: Option<Guidance>,
     #[serde(default)]
     pub input_enabled: Option<bool>,
@@ -90,7 +94,10 @@ impl Frame {
         {
             return Err(io::Error::other("invalid calibration feedback"));
         }
-        if !(50..=1000).contains(&frame.freshness_ms)
+        if frame
+            .pinch_distance_m
+            .is_some_and(|d| !d.is_finite() || !(0.0..=1.0).contains(&d))
+            || !(50..=1000).contains(&frame.freshness_ms)
             || !(1.0..=8192.0).contains(&frame.width)
             || !(1.0..=8192.0).contains(&frame.height)
             || !frame.age_ms.is_finite()
