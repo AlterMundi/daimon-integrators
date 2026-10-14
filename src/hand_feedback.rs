@@ -120,6 +120,30 @@ impl Frame {
         ]
     }
 }
+/// Recognition-event feedback, independent of button hold and input freshness.
+#[derive(Default)]
+pub struct PinchPulse {
+    seen: Option<u64>,
+    pulse: Option<([f64; 2], Instant)>,
+}
+impl PinchPulse {
+    pub fn observe(&mut self, presses: u64, origin: [f64; 2], now: Instant) {
+        if self.seen.is_some_and(|last| presses > last) {
+            self.pulse = Some((origin, now));
+        } else if self.seen.is_some_and(|last| presses < last) {
+            self.pulse = None;
+        }
+        self.seen = Some(presses);
+    }
+    pub fn state(&self, now: Instant) -> Option<([f64; 2], f64, f64)> {
+        let (origin, at) = self.pulse?;
+        let progress = now.saturating_duration_since(at).as_secs_f64() / 0.7;
+        if progress >= 1.0 {
+            return None;
+        }
+        Some((origin, 18.0 + 72.0 * progress, 1.0 - progress))
+    }
+}
 /// Retain at most one metadata skeleton. Never refresh its timestamp or press
 /// state when the incoming observation is missing; input uses the live frame.
 pub fn retain_hand(
@@ -181,6 +205,25 @@ mod tests {
     use super::*;
     fn frame() -> Frame {
         Frame::parse(br#"{"sequence":1,"width":640,"height":480,"landmarks":null,"fresh":true,"age_ms":50,"pinch_state":"open","blocked_reason":"close_threshold","presses":0,"test_phase":"testing","remaining_ms":1000}"#).unwrap()
+    }
+    #[test]
+    fn pinch_pulse_triggers_once_per_counter_increase_and_expires_after_release() {
+        let at = Instant::now();
+        let mut pulse = PinchPulse::default();
+        pulse.observe(2, [10.0, 20.0], at);
+        assert!(pulse.state(at).is_none());
+        pulse.observe(3, [30.0, 40.0], at);
+        let initial = pulse.state(at).unwrap();
+        assert_eq!(initial.0, [30.0, 40.0]);
+        pulse.observe(3, [90.0, 90.0], at + Duration::from_millis(100));
+        let later = pulse.state(at + Duration::from_millis(350)).unwrap();
+        assert_eq!(later.0, initial.0);
+        assert!(later.1 > initial.1);
+        assert!(later.2 < initial.2);
+        assert!(pulse.state(at + Duration::from_millis(699)).is_some());
+        assert!(pulse.state(at + Duration::from_millis(700)).is_none());
+        pulse.observe(0, [10.0, 20.0], at + Duration::from_secs(1));
+        assert!(pulse.state(at + Duration::from_secs(1)).is_none());
     }
     #[test]
     fn missing_geometry_retains_last_hand_without_refreshing_age_or_input() {

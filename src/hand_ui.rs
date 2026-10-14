@@ -104,6 +104,7 @@ struct Ui {
     actual_output: Arc<Mutex<[u32; 2]>>,
     painted_step: Arc<std::sync::atomic::AtomicUsize>,
     last_hand: Mutex<Option<(Frame, Instant)>>,
+    pinch_pulse: Mutex<hand_feedback::PinchPulse>,
 }
 unsafe fn text(cr: W, x: f64, y: f64, s: &str, size: f64) {
     cairo_set_font_size(cr, size);
@@ -347,6 +348,26 @@ unsafe extern "C" fn draw(area: W, cr: W, data: W) -> i32 {
                     })
                     .map(|p| [p[0] * width, p[1] * height])
                     .unwrap_or_else(|| visual.screen_point(center, width, height));
+                let mut pulse = ui.pinch_pulse.lock().unwrap();
+                pulse.observe(frame.presses, anchor, now);
+                if let Some((origin, radius, alpha)) = pulse.state(now) {
+                    cairo_set_source_rgba(cr, 0.66, 0.96, 0.80, alpha);
+                    cairo_set_line_width(cr, 3.0 + 4.0 * alpha);
+                    for factor in [1.0, 0.76] {
+                        cairo_new_path(cr);
+                        cairo_arc(
+                            cr,
+                            origin[0],
+                            origin[1],
+                            radius * factor,
+                            0.0,
+                            std::f64::consts::TAU,
+                        );
+                        cairo_stroke(cr);
+                    }
+                    text(cr, origin[0] + 22.0, origin[1] - 22.0, "PINCH", 24.0);
+                }
+                drop(pulse);
                 if pressed {
                     cairo_set_source_rgba(cr, 0.66, 0.86, 0.78, 1.0);
                 } else {
@@ -554,6 +575,7 @@ pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error
             actual_output: actual_output.clone(),
             painted_step: painted_step.clone(),
             last_hand: Mutex::new(None),
+            pinch_pulse: Mutex::new(hand_feedback::PinchPulse::default()),
         }));
         g_signal_connect_data(
             area,

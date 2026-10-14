@@ -119,3 +119,9 @@ Visual hand retention is bounded at 300 ms; aged feedback is dimmed/amber. It do
 not extend the strict 150 ms input freshness or green press indication. The
 independent status panel still owns device observation; source/UI fixture checks
 do not prove human calibration or camera Stop cleanup.
+
+Recognized pinch onsets also produce a mint-green double-ring pulse at the hand's
+palm anchor. It expands and fades over 700 ms, with a PINCH label, even after a
+brief pinch releases. The cumulative recognized-press counter triggers once per
+increase; initial/reset counters and a held press do not create repeated flashes.
+This is event feedback, separate from current held-button state and input safety.
