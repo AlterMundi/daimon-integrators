@@ -125,3 +125,8 @@ palm anchor. It expands and fades over 700 ms, with a PINCH label, even after a
 brief pinch releases. The cumulative recognized-press counter triggers once per
 increase; initial/reset counters and a held press do not create repeated flashes.
 This is event feedback, separate from current held-button state and input safety.
+
+The entire skeleton becomes mint green while the current fresh producer state
+reports an active held pinch, and returns to cyan on release or unknown/stale
+state. Retained geometry cannot preserve a green held indication. This complements
+the onset pulse without changing gesture recognition or injecting input.

@@ -382,9 +382,13 @@ unsafe extern "C" fn draw(area: W, cr: W, data: W) -> i32 {
                     .iter()
                     .map(|p| [anchor[0] - (p[0] - center[0]), anchor[1] + p[1] - center[1]])
                     .collect();
-                // Cyan is geometry, not a click/freshness state. Mark extended
-                // delay in the status box instead of flickering the whole hand.
-                cairo_set_source_rgba(cr, 0.53, 0.84, 0.93, 0.9);
+                // Green means a currently eligible held pinch, not retained
+                // geometry or an onset pulse. Unknown/released stays cyan.
+                if pressed {
+                    cairo_set_source_rgba(cr, 0.66, 0.96, 0.80, 0.95);
+                } else {
+                    cairo_set_source_rgba(cr, 0.53, 0.84, 0.93, 0.9);
+                }
                 if visual_delayed {
                     text(
                         cr,
