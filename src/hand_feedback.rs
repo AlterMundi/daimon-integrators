@@ -40,7 +40,15 @@ impl Frame {
             || frame.calibration.as_ref().is_some_and(|c| {
                 !matches!(
                     c.stage.as_str(),
-                    "left" | "right" | "top" | "bottom" | "review" | "active" | "uncalibrated"
+                    "left"
+                        | "right"
+                        | "top"
+                        | "bottom"
+                        | "upper_left"
+                        | "lower_right"
+                        | "review"
+                        | "active"
+                        | "uncalibrated"
                 ) || c.samples > 24
                     || c.message.len() > 512
                     || c.output.iter().any(|n| !(1..=8192).contains(n))

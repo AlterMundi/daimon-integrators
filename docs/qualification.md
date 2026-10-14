@@ -214,3 +214,13 @@ changing 150 ms input eligibility / 300 ms visual retention. Inference FPS,
 physical fluency and live-session resource consumption remain separate measured
 questions. The change affects only the optional finite hand overlay, not the
 always-running compact status panel. Rust alone does not establish fluency.
+
+## Two-diagonal calibration controls
+
+The finite native overlay understands upper_left/lower_right sampling states and
+CALIBRATE now queues the owning producer's same-origin diagonal route. NEXT
+requires the same fresh sample count; corner review and explicit acceptance stay
+separate. Raw sampling feedback does not ask the human to reach already-mapped
+screen edges. The classic producer route remains available. Tests (including
+no-UI build) and all-target Clippy passed. Physical comfort/precision are pending.
+The requested last-skeleton retention during missing data is deferred.

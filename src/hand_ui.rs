@@ -231,6 +231,8 @@ unsafe extern "C" fn draw(area: W, cr: W, data: W) -> i32 {
                 "DISPLAY SIZE MISMATCH // STOP INPUT"
             } else {
                 match cal.stage.as_str() {
+                    "upper_left" => "Hold a comfortable UPPER LEFT pose; then NEXT",
+                    "lower_right" => "Hold a comfortable LOWER RIGHT pose; then NEXT",
                     "left" => "Move to comfortable LEFT; hold, then NEXT",
                     "right" => "Move to comfortable RIGHT; hold, then NEXT",
                     "top" => "Move to comfortable TOP; hold, then NEXT",
@@ -374,8 +376,10 @@ unsafe extern "C" fn tick(data: W) -> i32 {
                     })
                     && match *action {
                         "next" => {
-                            matches!(c.stage.as_str(), "left" | "right" | "top" | "bottom")
-                                && c.samples >= 10
+                            matches!(
+                                c.stage.as_str(),
+                                "left" | "right" | "top" | "bottom" | "upper_left" | "lower_right"
+                            ) && c.samples >= 10
                         }
                         "accept" => c.corners_verified,
                         "cancel" => !matches!(c.stage.as_str(), "active" | "uncalibrated"),
@@ -412,7 +416,7 @@ macro_rules! calibration_button {
         }
     };
 }
-calibration_button!(start_calibration, "/calibration/start");
+calibration_button!(start_calibration, "/calibration/diagonal");
 calibration_button!(next_calibration, "/calibration/next");
 calibration_button!(cancel_calibration, "/calibration/cancel");
 calibration_button!(accept_calibration, "/calibration/accept");
