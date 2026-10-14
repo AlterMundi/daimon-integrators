@@ -31,6 +31,8 @@ pub struct Frame {
     #[serde(default)]
     pub recording: bool,
     #[serde(default)]
+    pub until_stop: bool,
+    #[serde(default)]
     pub pinch_distance_m: Option<f64>,
     #[serde(default)]
     pub guided: Option<Guidance>,

@@ -140,3 +140,8 @@ Recorded camera-only trial feedback explicitly shows RECORDING // NO INPUT.
 Experimental metric3D pinch metadata displays the estimated fingertip gap in
 millimetres; recognized state still drives the pulse and held skeleton color.
 Recording/playback lives in WiggleControl, not this observer or panel.
+
+`hand-overlay-until-stop PORT` supports an explicitly human-requested manual
+continuous session. It shows REC // LIVE INPUT and UNTIL STOP, without an exit
+countdown. Its Stop requests closure of the selected producer and closes the
+renderer on acknowledgment. Existing finite overlay commands remain bounded.

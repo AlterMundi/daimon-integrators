@@ -96,9 +96,10 @@ struct Ui {
     area: W,
     shared: Arc<Mutex<Option<(Frame, Instant)>>>,
     painted: Arc<AtomicBool>,
-    until: Instant,
+    until: Option<Instant>,
     demo: bool,
     stop_requested: Arc<AtomicBool>,
+    stop: Arc<AtomicBool>,
     command: Arc<Mutex<Option<&'static str>>>,
     cal_buttons: Vec<(W, &'static str)>,
     actual_output: Arc<Mutex<[u32; 2]>>,
@@ -129,7 +130,9 @@ unsafe extern "C" fn draw(area: W, cr: W, data: W) -> i32 {
     let testing = snapshot
         .as_ref()
         .is_some_and(|(f, _)| f.test_phase == "testing")
-        && remaining.is_some_and(|v| v > 0);
+        && snapshot
+            .as_ref()
+            .is_some_and(|(f, _)| f.until_stop || remaining.is_some_and(|v| v > 0));
     cairo_set_source_rgba(cr, 0.035, 0.055, 0.09, 0.92);
     cairo_rectangle(cr, 24.0, 24.0, 660.0, 90.0);
     cairo_fill(cr);
@@ -175,13 +178,18 @@ unsafe extern "C" fn draw(area: W, cr: W, data: W) -> i32 {
     {
         "CALIBRATING // NO CLICKS"
     } else if testing {
-        "TESTING // NATIVE INPUT"
+        if snapshot.as_ref().is_some_and(|(f, _)| f.recording) {
+            "REC // LIVE INPUT"
+        } else {
+            "LIVE INPUT"
+        }
     } else if remaining == Some(0) {
         "TEST ENDED"
     } else {
         "PREPARING // LOCAL HANDS"
     };
     text(cr, 86.0, 69.0, label, 26.0);
+    let indefinite = snapshot.as_ref().is_some_and(|(f, _)| f.until_stop);
     let seconds = if let Some((g, at)) = snapshot
         .as_ref()
         .and_then(|(f, at)| f.guided.as_ref().map(|g| (g, at)))
@@ -197,9 +205,13 @@ unsafe extern "C" fn draw(area: W, cr: W, data: W) -> i32 {
         cr,
         550.0,
         69.0,
-        &seconds
-            .map(|s| format!("{:02}:{:02}", s / 60, s % 60))
-            .unwrap_or_else(|| "--:--".into()),
+        &(if indefinite {
+            Some("UNTIL STOP".to_string())
+        } else {
+            None
+        })
+        .or_else(|| seconds.map(|s| format!("{:02}:{:02}", s / 60, s % 60)))
+        .unwrap_or_else(|| "--:--".into()),
         30.0,
     );
     text(
@@ -498,7 +510,7 @@ unsafe extern "C" fn tick(data: W) -> i32 {
         }
     }
     gtk_widget_queue_draw(ui.area);
-    if Instant::now() >= ui.until {
+    if ui.stop.load(Ordering::SeqCst) || ui.until.is_some_and(|until| Instant::now() >= until) {
         gtk_main_quit();
         return 1;
     }
@@ -530,7 +542,20 @@ calibration_button!(cancel_calibration, "/calibration/cancel");
 calibration_button!(accept_calibration, "/calibration/accept");
 calibration_button!(rollback_calibration, "/calibration/rollback");
 pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error::Error>> {
-    if !(1..=180).contains(&seconds) || (!demo && port == 0) {
+    if !(1..=180).contains(&seconds) {
+        return Err("overlay duration1..180".into());
+    }
+    run_inner(port, Some(seconds), demo)
+}
+pub fn until_stop(port: u16) -> Result<(), Box<dyn std::error::Error>> {
+    run_inner(port, None, false)
+}
+fn run_inner(
+    port: u16,
+    seconds: Option<u32>,
+    demo: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
+    if !demo && port == 0 {
         return Err("hand overlay requires a port and 1..180 seconds".into());
     }
     unsafe {
@@ -572,7 +597,7 @@ pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error
         let painted = Arc::new(AtomicBool::new(false));
         let stop = Arc::new(AtomicBool::new(false));
         let stop_requested = Arc::new(AtomicBool::new(false));
-        let until = Instant::now() + Duration::from_secs(seconds as u64);
+        let until = seconds.map(|seconds| Instant::now() + Duration::from_secs(seconds as u64));
         let command = Arc::new(Mutex::new(None));
         let actual_output = Arc::new(Mutex::new([0, 0]));
         let painted_step = Arc::new(std::sync::atomic::AtomicUsize::new(usize::MAX));
@@ -584,6 +609,7 @@ pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error
             until,
             demo,
             stop_requested: stop_requested.clone(),
+            stop: stop.clone(),
             command: command.clone(),
             cal_buttons: Vec::new(),
             actual_output: actual_output.clone(),
@@ -665,7 +691,9 @@ pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error
             let mut acknowledged = false;
             let mut stop_accepted = false;
             let mut acknowledged_step = None;
-            while Instant::now() < until && !worker_stop.load(Ordering::SeqCst) {
+            while until.is_none_or(|until| Instant::now() < until)
+                && !worker_stop.load(Ordering::SeqCst)
+            {
                 let pending = command.lock().unwrap().take();
                 if let Some(path) = pending {
                     let _ = hand_feedback::request(port, "POST", path);
@@ -674,6 +702,10 @@ pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error
                     stop_accepted = demo || hand_feedback::request(port, "POST", "/stop").is_ok();
                 }
                 if stop_accepted {
+                    if until.is_none() {
+                        worker_stop.store(true, Ordering::SeqCst);
+                        break;
+                    }
                     if let Some((frame, at)) = shared.lock().unwrap().as_mut() {
                         frame.remaining_ms = Some(0);
                         frame.landmarks = None;
@@ -710,6 +742,7 @@ pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error
                         sequence: 0,
                         freshness_ms: 150,
                         recording: false,
+                        until_stop: false,
                         pinch_distance_m: None,
                         guided: None,
                         input_enabled: Some(false),
@@ -725,7 +758,10 @@ pub fn run(port: u16, seconds: u32, demo: bool) -> Result<(), Box<dyn std::error
                         presses: 0,
                         test_phase: "testing".into(),
                         remaining_ms: Some(
-                            until.saturating_duration_since(Instant::now()).as_millis() as u64,
+                            until
+                                .unwrap()
+                                .saturating_duration_since(Instant::now())
+                                .as_millis() as u64,
                         ),
                     })
                 } else {

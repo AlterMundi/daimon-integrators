@@ -519,6 +519,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
         #[cfg(feature = "ui")]
+        Some("hand-overlay-until-stop") if args.len() == 3 => {
+            hand_ui::until_stop(args[2].parse()?)?;
+        }
+        #[cfg(feature = "ui")]
         Some("hand-overlay") if args.len() == 4 => {
             hand_ui::run(args[2].parse()?, args[3].parse()?, false)?;
         }
