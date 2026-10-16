@@ -349,6 +349,26 @@ unsafe extern "C" fn stop(_button: W, data: W) {
     let u = &*(data as *mut Ui);
     u.engine.lock().unwrap().request(Request::Stop);
 }
+fn beta_helper() -> PathBuf {
+    PathBuf::from(env::var("HOME").unwrap_or_default()).join(".local/bin/wigglecontrol-beta1")
+}
+fn launch_beta(action: &'static str) {
+    let helper = beta_helper();
+    if !helper.is_file() {
+        return;
+    }
+    // Explicit human click only. Reap the helper off the GTK thread.
+    std::thread::spawn(move || match Command::new(helper).arg(action).status() {
+        Ok(status) if status.success() => (),
+        outcome => eprintln!("WiggleControl Beta1 {action} failed: {outcome:?}"),
+    });
+}
+unsafe extern "C" fn open_beta(_button: W, _data: W) {
+    launch_beta("open");
+}
+unsafe extern "C" fn stop_beta(_button: W, _data: W) {
+    launch_beta("stop");
+}
 unsafe fn apply_view(u: &mut Ui, compact: bool) {
     u.compact = compact;
     u.engine.lock().unwrap().snapshot.ui_compact = Some(compact);
@@ -435,6 +455,15 @@ pub fn run(
         let small_cpu = badge(compact_box, "", "CPU");
         let small_temperature = badge(compact_box, "", "TEMP");
         let small_power = badge(compact_box, "", "MODE");
+        let small_beta = gtk_button_new_with_label(c("WG1").as_ptr());
+        gtk_box_pack_start(compact_box, small_beta, 0, 0, 0);
+        gtk_widget_set_tooltip_text(
+            small_beta,
+            c("Open one-hand Beta1; camera stays off until Start").as_ptr(),
+        );
+        let small_beta_stop = gtk_button_new_with_label(c("■ WG1").as_ptr());
+        gtk_box_pack_start(compact_box, small_beta_stop, 0, 0, 0);
+        gtk_widget_set_tooltip_text(small_beta_stop, c("Stop only WiggleControl Beta1").as_ptr());
         let small_stop = gtk_button_new_with_label(c("■").as_ptr());
         gtk_box_pack_start(compact_box, small_stop, 0, 0, 0);
         gtk_widget_set_tooltip_text(small_stop, c("Detener sólo mi captura gestionada").as_ptr());
@@ -450,6 +479,10 @@ pub fn run(
         let managed = label("Sin grabación gestionada", box_);
         let remote = label("CompAII · sin feed remoto reciente", box_);
         let system = label("CPU ? · temperatura ? · modo desconocido", box_);
+        let beta = gtk_button_new_with_label(c("Open WiggleControl Beta1").as_ptr());
+        gtk_box_pack_start(box_, beta, 0, 0, 0);
+        let beta_stop = gtk_button_new_with_label(c("Stop WiggleControl Beta1").as_ptr());
+        gtk_box_pack_start(box_, beta_stop, 0, 0, 0);
         let button = gtk_button_new_with_label(c("Detener mi captura").as_ptr());
         gtk_box_pack_start(box_, button, 0, 0, 0);
         gtk_widget_set_sensitive(button, 0);
@@ -517,6 +550,27 @@ pub fn run(
                 ptr::null_mut(),
                 0,
             );
+        }
+        let available = i32::from(beta_helper().is_file());
+        for (buttons, function) in [
+            ([small_beta, beta], open_beta as unsafe extern "C" fn(W, W)),
+            (
+                [small_beta_stop, beta_stop],
+                stop_beta as unsafe extern "C" fn(W, W),
+            ),
+        ] {
+            let callback: unsafe extern "C" fn() = std::mem::transmute(function);
+            for button in buttons {
+                gtk_widget_set_sensitive(button, available);
+                g_signal_connect_data(
+                    button,
+                    c("clicked").as_ptr(),
+                    Some(callback),
+                    data,
+                    ptr::null_mut(),
+                    0,
+                );
+            }
         }
         gtk_widget_show_all(window);
         apply_view(&mut *(data as *mut Ui), compact);

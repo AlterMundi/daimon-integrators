@@ -15,3 +15,28 @@ jobs:
       - run: cargo build --release --locked
       - run: python3 -m unittest discover -s tests
       - run: sudo python3 tests/installation_fixture.py --scratch "$PWD/target/installation-fixtures"
+
+  arm64-panel:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85.1
+      - run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libgtk-layer-shell-dev
+      - run: cargo test --locked --no-default-features
+      - run: cargo build --release --locked
+      - name: Retain source-bound manual panel candidate
+        run: |
+          mkdir -p target/arm64-panel
+          cp target/release/daimon-integrators LICENSE target/arm64-panel/
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          import json, hashlib, os
+          p=Path('target/arm64-panel/daimon-integrators')
+          (p.parent/'manifest.json').write_text(json.dumps({'source_commit':os.environ['GITHUB_SHA'],'architecture':'aarch64','compiler':'1.85.1','sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'receiving_qualified':False},indent=2)+'\n')
+          PYCODE
+          tar -C target/arm64-panel -czf target/daimon-integrators-arm64.tar.gz daimon-integrators manifest.json LICENSE
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daimon-integrators-arm64-panel
+          path: target/daimon-integrators-arm64.tar.gz
+          retention-days: 14

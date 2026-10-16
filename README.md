@@ -145,3 +145,14 @@ Recording/playback lives in WiggleControl, not this observer or panel.
 continuous session. It shows REC // LIVE INPUT and UNTIL STOP, without an exit
 countdown. Its Stop requests closure of the selected producer and closes the
 renderer on acknowledgment. Existing finite overlay commands remain bounded.
+
+### Optional one-hand Beta1 dashboard entry
+
+When the receiving user's `~/.local/bin/wigglecontrol-beta1` helper is installed,
+the compact panel exposes **WG1** (open) and **■ WG1** (Stop). Expanded mode has
+fully named buttons. Open requests the beta's idle feedback view; that view's
+explicit Start enables capture/input. Stop targets only that beta session.
+Neither button runs at startup. The installed helper owns its receiving-local
+unit/browser/configuration; this panel does not embed private paths or credentials.
+Missing helpers disable these buttons. Device observations stay independent;
+opening a view or completing a helper is not a camera/input delivery receipt.
