@@ -80,6 +80,16 @@ impl Engine {
                 self.snapshot.compact = compact;
                 json!({"ok":true,"stage":"view_requested","compact":compact})
             }
+            Request::StopCapture { output } => {
+                if self.snapshot.managed.activity != "recording"
+                    || self.snapshot.managed.output.as_deref() != Some(output.as_str())
+                {
+                    return json!({"ok":false,"error":"selected capture is not current"});
+                }
+                // Selection and Stop run under the same engine lock. A late
+                // caller cannot stop the next capture or an input session.
+                self.request(Request::Stop)
+            }
             Request::Stop => {
                 if let Some(child) = &mut self.child {
                     match child.try_wait() {
@@ -488,6 +498,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             serde_json::to_string_pretty(&control(Request::Status)?)?
         ),
         Some("stop") => println!("{}", control(Request::Stop)?),
+        Some("stop-capture") if args.len() == 3 => {
+            let response = control(Request::StopCapture {
+                output: args[2].clone(),
+            })?;
+            println!("{response}");
+            if response["ok"] != true {
+                std::process::exit(1);
+            }
+        }
         Some("view") if args.len() == 3 && ["compact", "expanded"].contains(&args[2].as_str()) => {
             println!(
                 "{}",
@@ -542,7 +561,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err("built without UI".into());
         }
         _ => {
-            eprintln!("Usage: daimon-integrators hand-overlay PORT SECONDS|hand-overlay-demo SECONDS|panel|observe|status|stop|input SECONDS [mouse|touch]|power auto|quiet|silent|capture MODE SECONDS ABSOLUTE_OUTPUT");
+            eprintln!("Usage: daimon-integrators hand-overlay PORT SECONDS|hand-overlay-demo SECONDS|panel|observe|status|stop|stop-capture ABSOLUTE_OUTPUT|input SECONDS [mouse|touch]|power auto|quiet|silent|capture MODE SECONDS ABSOLUTE_OUTPUT");
             std::process::exit(2);
         }
     }
@@ -605,8 +624,22 @@ mod engine_tests {
             .unwrap();
         let mut e = Engine::new(Devices::default(), Arc::new(AtomicBool::new(false)));
         e.child = Some(child);
+        e.snapshot.managed.activity = "recording".into();
+        e.snapshot.managed.output = Some("/selected-owned-capture.m4a".into());
         e.snapshot.managed.phase = "capturing".into();
-        assert_eq!(e.request(Request::Stop)["stage"], "stop_requested");
+        assert_eq!(
+            e.request(Request::StopCapture {
+                output: "/previous-capture.m4a".into()
+            })["ok"],
+            false
+        );
+        assert!(e.child.as_mut().unwrap().try_wait().unwrap().is_none());
+        assert_eq!(
+            e.request(Request::StopCapture {
+                output: "/selected-owned-capture.m4a".into()
+            })["stage"],
+            "stop_requested"
+        );
         for _ in 0..40 {
             e.tick();
             if e.child.is_none() {
@@ -620,5 +653,38 @@ mod engine_tests {
         unrelated.kill().unwrap();
         unrelated.wait().unwrap();
         assert_eq!(e.request(Request::Stop)["stage"], "no_managed_capture");
+    }
+    #[test]
+    fn delayed_capture_stop_cannot_cancel_a_new_preparation() {
+        let mut e = Engine::new(Devices::default(), Arc::new(AtomicBool::new(false)));
+        for output in [
+            "/nonexistent/first-owned-capture.m4a",
+            "/nonexistent/second-owned-capture.m4a",
+        ] {
+            assert_eq!(
+                e.request(Request::Capture {
+                    mode: "audio".into(),
+                    seconds: 10,
+                    output: output.into()
+                })["ok"],
+                true
+            );
+            if output.contains("second") {
+                assert_eq!(
+                    e.request(Request::StopCapture {
+                        output: "/nonexistent/first-owned-capture.m4a".into()
+                    })["ok"],
+                    false
+                );
+                assert!(e.pending.is_some());
+            }
+            assert_eq!(
+                e.request(Request::StopCapture {
+                    output: output.into()
+                })["stage"],
+                "cancelled_before_capture"
+            );
+            assert!(e.pending.is_none());
+        }
     }
 }
