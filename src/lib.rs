@@ -130,6 +130,9 @@ pub fn atomic_json(path: &Path, value: &impl Serialize) -> std::io::Result<()> {
 pub enum Request {
     Status,
     Stop,
+    StopCapture {
+        output: String,
+    },
     Input {
         seconds: u32,
         #[serde(default = "mouse_mode")]

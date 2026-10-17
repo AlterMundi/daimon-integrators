@@ -256,3 +256,28 @@ eligibility and replacement by a new sequence. Normal/no-UI tests and Clippy pas
 Optional input_enabled metadata now distinguishes camera-only tracking from native
 input in the UI. This addresses presentation behavior, not proved pinch accuracy;
 actual gesture failure diagnosis and physical acceptance remain outstanding.
+
+## Foreground conversation companion — 2026-10-17
+
+The native GTK one-button client passed an Xvfb/XTest journey against an actual
+TLS dashboard and Telecodex native-controller/SQLite instance. Synthetic App
+Server, ASR and speech peers and FFmpeg-generated audio kept this qualification
+independent of physical sensors and model inference. It delivered a finalized
+voice reply to Alpha's exact native question, deferred Beta's concurrent result
+while recording, and played that result afterward. Three captures each received
+their selected Stop; only one was submitted. Long hold retained a recording
+without sending or restarting it, and window close stopped only its selected
+capture. The cold integrating native context remained uncreated.
+
+The screenshot showed Listening and fresh Microphone in use during the synthetic
+capture. An initial TLS fixture incorrectly used Starlette Mount, retaining the
+public prefix in the path that the receiving proxy strips; the corrected fixture
+uses the actual receiving path semantics. This was a test-mount correction, not
+an authentication-policy change.
+
+Six transport/private-file tests and eight runtime/race tests pass, including
+barge-in on a new question without answering a previous one. All sixteen Python
+tests, locked Rust tests with and without UI, formatting and default-feature
+Clippy pass. Selected Wayland installation, actual device enrollment, physical
+button/hearing and complete conversational intent/clarification acceptance remain
+open; these synthetic observations do not close the device issue.
