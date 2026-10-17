@@ -123,6 +123,14 @@ class Companion(unittest.TestCase):
         self.assertEqual(len([r for r in self.requests if r[0]=='POST']),1)
         with self.assertRaises(ValueError):self.drafts.submit(self.transport,doc['id'])
 
+    def test_late_preparing_observation_cannot_reopen_a_recorded_answer(self):
+        doc,_=self.finalized()
+        self.drafts.remote(doc['id'],{'id':doc['id'],'phase':'answered','routing':None})
+        returned=self.drafts.remote(doc['id'],{'id':doc['id'],'phase':'preparing','routing':None})
+        self.assertEqual(returned['phase'],'answered')
+        self.assertTrue(self.drafts.read(doc['id'])['remote_terminal'])
+        self.assertEqual(self.drafts.read(doc['id'])['remote_phase'],'answered')
+
     def test_explicit_identical_retry_preserves_original_clip_identity(self):
         doc,_=self.finalized();self.lose=True
         with self.assertRaises(client.Unavailable):self.drafts.submit(self.transport,doc['id'])
