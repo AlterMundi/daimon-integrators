@@ -131,6 +131,18 @@ class Companion(unittest.TestCase):
         self.assertTrue(self.drafts.read(doc['id'])['remote_terminal'])
         self.assertEqual(self.drafts.read(doc['id'])['remote_phase'],'answered')
 
+    def test_terminal_destination_receipt_recovers_its_descriptor_after_restart(self):
+        doc,_=self.finalized()
+        descriptor={'id':'input:'+doc['id'],'revision':'c'*64,'kind':'route_clarification','label':'Destination needed'}
+        receipt={'id':doc['id'],'phase':'awaiting_target','routing':None,'retired':False,'clarification':descriptor}
+        self.drafts.remote(doc['id'],receipt)
+        self.receipts[doc['id']]=receipt
+        self.drafts=client.Drafts(self.root/'drafts')
+        recovered=self.drafts.inspect(self.transport,doc['id'])
+        self.assertEqual(recovered['clarification'],descriptor)
+        self.assertEqual(self.drafts.read(doc['id'])['remote_phase'],'awaiting_target')
+        self.assertFalse(any(r[0]=='POST'for r in self.requests))
+
     def test_explicit_identical_retry_preserves_original_clip_identity(self):
         doc,_=self.finalized();self.lose=True
         with self.assertRaises(client.Unavailable):self.drafts.submit(self.transport,doc['id'])

@@ -59,8 +59,15 @@ only the exact retained original if that question is still current. An explicit
 `#Topic` continues to follow the controller's shortcut. Older dashboards refuse
 the `context:` wire prefix rather than silently falling back to a direct answer.
 Worker audio includes the certified session label on the first part when the
-selected server has Telecodex PR154. Real semantic quality and audible clarification
-for unrouted originals still require complete receiving qualification.
+selected server has Telecodex PR154. Real semantic quality still requires complete receiving qualification.
+
+An unrouted eligible original can also supply a destination question quoting
+that original and enrolled conversation names. The client discovers it through
+receipts and paged history, then uses the same ordered, revalidated player. A
+spoken response carries `context:input:UUID`; the integrator must explicitly
+resolve that original using the later retained utterance. Playback does not
+select a destination. Resolved or stale questions cannot be replayed as current,
+and receipt recovery after a restart does not repost an original clip.
 
 An interrupted audio render never causes a speculative repeat. Barge-in stops
 only the owned player before starting the microphone. Paused/unavailable sources

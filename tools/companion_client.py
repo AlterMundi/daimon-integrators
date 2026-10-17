@@ -229,8 +229,11 @@ class Drafts:
         with self.lock:
             previous = self.read(ident)
             if previous.get('remote_terminal'):
-                return {'id':ident,'phase':previous['remote_phase'],'retired':previous.get('remote_retired',False),
+                retained = {'id':ident,'phase':previous['remote_phase'],'retired':previous.get('remote_retired',False),
                     'routing':{'phase':previous['remote_route']} if previous.get('remote_route') else None}
+                if result.get('phase')==previous['remote_phase'] and result.get('clarification'):
+                    retained['clarification'] = result['clarification']
+                return retained
             phase = result['phase']
             route = (result.get('routing') or {}).get('phase')
             terminal = phase in ('accepted','answered','awaiting_target','retained_unsent','uncertain','preparation_unconfirmed') or result.get('retired') or route in ('accepted','retained_unsent','uncertain','cancelled','rejected')
@@ -297,6 +300,7 @@ class Companion:
         self.play_offset = 0
         self.player = self.player_start = self.play_task = self.capture_start = self.source = None
         self.request_cursor = 0
+        self.input_cursor = 0
         self.lock = asyncio.Lock()
         self.last_state = None
 
@@ -311,7 +315,7 @@ class Companion:
         doc = self.drafts.read(current) if current else None
         phase = doc['phase'] if doc else 'playing' if self.source else 'ready' if self.connected else 'reconnecting'
         button = 'Send voice' if phase in ('capturing','capture_preparing','ready_to_send') else 'Retry saved voice' if phase=='submission_unconfirmed' else 'Talk'
-        question = next((s for s in self.state['agenda'] if s['kind']=='native_question' and not s.get('paused')),None)
+        question = next((s for s in self.state['agenda'] if s['kind'] in ('native_question','route_clarification') and not s.get('paused')),None)
         if not self.armed and question and not current:
             button = 'Listen to question'
         local_ready = self.snapshot is not None
@@ -330,7 +334,7 @@ class Companion:
         return await asyncio.to_thread(self.transport.json,method,path,body)
 
     def enqueue(self, source):
-        if (not isinstance(source.get('id'),str) or not re.fullmatch(r'(?:request:[a-f0-9]{32}|delivery:[a-f0-9-]{36}|native:[1-9][0-9]{0,18})',source['id'])
+        if (not isinstance(source.get('id'),str) or not re.fullmatch(r'(?:request:[a-f0-9]{32}|(?:delivery|input):[a-f0-9-]{36}|native:[1-9][0-9]{0,18})',source['id'])
                 or not re.fullmatch(r'[a-f0-9]{64}',source.get('revision',''))
                 or source.get('current') is False or source.get('correction_pending')):
             return True
@@ -353,6 +357,14 @@ class Companion:
         self.state['deferred'][source['id']] = {'revision':source['revision'],'reason':reason}
         self.state['deferred'] = dict(list(self.state['deferred'].items())[-256:])
         self.state['agenda'] = [s for s in self.state['agenda'] if s is not source]
+
+    def enqueue_clarification(self, original):
+        source = original.get('clarification')
+        if (original.get('phase')=='awaiting_target' and original.get('retired') is not True
+                and isinstance(source,dict) and source.get('id')=='input:'+original['id']
+                and source.get('kind')=='route_clarification'):
+            return self.enqueue(source)
+        return True
 
     async def stop_audio(self):
         self.generation += 1
@@ -381,6 +393,7 @@ class Companion:
 
     def remember_remote(self, ident, result):
         phase = result.get('phase')
+        self.enqueue_clarification(result)
         self.state['current'] = None if self.state['current']==ident else self.state['current']
         terminal = phase in ('accepted','answered','awaiting_target','retained_unsent','uncertain','preparation_unconfirmed') or result.get('retired') or (result.get('routing') or {}).get('phase') in ('accepted','retained_unsent','uncertain','cancelled','rejected')
         if not terminal and ident not in self.state['pending']:
@@ -412,7 +425,7 @@ class Companion:
             self.busy = True
             created = None
             try:
-                audible = self.source if (self.source and self.source['kind'] in ('native_question','worker_result')
+                audible = self.source if (self.source and self.source['kind'] in ('native_question','worker_result','route_clarification')
                     and self.player and self.player.returncode is None) else None
                 await self.stop_audio()
                 ident = self.state['current']
@@ -452,7 +465,7 @@ class Companion:
                     return
                 if not self.connected or not self.can_speak or not self.binding:
                     raise Unavailable('Reconnect before starting a recording.')
-                question = next((s for s in self.state['agenda'] if s['kind']=='native_question' and not s.get('paused')),None)
+                question = next((s for s in self.state['agenda'] if s['kind'] in ('native_question','route_clarification') and not s.get('paused')),None)
                 if question and not self.focus and not was_armed:
                     self.launch_audio(question)
                     return
@@ -553,6 +566,17 @@ class Companion:
                     self.enqueue({'id':'request:'+request['id'],'revision':request['revision'],
                         'kind':'native_question','label':request.get('label','Conversation')})
             self.request_cursor = requests['cursor'] if requests['more'] else 0
+            # Recent originals cover other input channels. Rotate older pages
+            # independently so a backlog cannot hide a retained destination
+            # question or postpone newly arriving originals until its end.
+            recent_inputs = await self.api('GET','/api/interaction/inputs?before=0')
+            older_inputs = await self.api('GET','/api/interaction/inputs?before='+str(self.input_cursor)) if self.input_cursor else recent_inputs
+            for page in ((recent_inputs,older_inputs) if self.input_cursor else (recent_inputs,)):
+                admitted = True
+                for original in reversed(page['items']):
+                    admitted = self.enqueue_clarification(original) and admitted
+                if page is older_inputs and admitted:
+                    self.input_cursor = page['cursor'] if page['more'] else 0
             ids = ([self.state['current']] if self.state['current'] and self.drafts.read(self.state['current'])['phase']=='submission_unconfirmed' else []) + self.state['pending'][:8]
             for ident in dict.fromkeys(ids):
                 try:
@@ -588,7 +612,7 @@ class Companion:
             return
         eligible = [s for s in self.state['agenda'] if not s.get('paused') and not s.get('audio_unavailable')]
         if eligible:
-            self.launch_audio(next((s for s in eligible if s['kind']=='native_question'),eligible[0]))
+            self.launch_audio(next((s for s in eligible if s['kind'] in ('native_question','route_clarification')),eligible[0]))
 
     async def play(self, source, generation):
         offset = 0
@@ -643,7 +667,7 @@ class Companion:
             self.state['seen'][source['id']] = source['revision']
             self.state['seen'] = dict(list(self.state['seen'].items())[-256:])
             self.state['agenda'] = [s for s in self.state['agenda'] if s is not source]
-            if source['kind']=='native_question':
+            if source['kind'] in ('native_question','route_clarification'):
                 self.focus = {'source':source['id'],'revision':source['revision'],'label':source.get('label','Question')}
                 self.status = 'Question finished. Press Talk to continue.'
             else:
