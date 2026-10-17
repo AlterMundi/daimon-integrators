@@ -217,7 +217,8 @@ class Drafts:
         headers = {'Content-Type':'audio/mp4','X-Input-Id':ident,
             'X-Input-Binding':doc['binding'],'X-Audio-Sha256':digest}
         if doc['reply']:
-            headers.update({'X-Reply-Source':doc['reply']['source'],'X-Reply-Revision':doc['reply']['revision']})
+            source = ('context:' if doc['reply'].get('context_only') else '') + doc['reply']['source']
+            headers.update({'X-Reply-Source':source,'X-Reply-Revision':doc['reply']['revision']})
         # The caller invokes this only on an explicit Send/Retry gesture.
         result = transport.json('POST','/api/interaction/voice',clip,headers)
         if result.get('id') != ident:
@@ -411,6 +412,8 @@ class Companion:
             self.busy = True
             created = None
             try:
+                audible = self.source if (self.source and self.source['kind'] in ('native_question','worker_result')
+                    and self.player and self.player.returncode is None) else None
                 await self.stop_audio()
                 ident = self.state['current']
                 if discard:
@@ -455,7 +458,9 @@ class Companion:
                     return
                 if len(self.state['pending']) >= 64:
                     raise Unavailable('Saved message receipts need attention before recording again.')
-                reference = {k:self.focus[k] for k in ('source','revision')} if self.focus else None
+                reference = ({'source':audible['id'],'revision':audible['revision']} if audible else
+                    {k:self.focus[k] for k in ('source','revision')} if self.focus else None)
+                if reference:reference['context_only'] = True
                 self.focus = None
                 doc = self.drafts.begin(self.transport.identity,self.binding,reference)
                 created = doc['id']
@@ -572,10 +577,9 @@ class Companion:
     def launch_audio(self, source):
         if self.play_task and not self.play_task.done():
             return
-        if source['kind']=='native_question':
-            # A new question has not been heard yet. Barge-in must not answer
-            # the previously completed question under the new audible label.
-            self.focus = None
+        # Preparing/playing another source cannot keep a previous question as
+        # the context of a new utterance. Audible supported sources take over.
+        self.focus = None
         self.source = source
         self.play_task = asyncio.create_task(self.play(source,self.generation))
 
@@ -641,8 +645,10 @@ class Companion:
             self.state['agenda'] = [s for s in self.state['agenda'] if s is not source]
             if source['kind']=='native_question':
                 self.focus = {'source':source['id'],'revision':source['revision'],'label':source.get('label','Question')}
-                self.status = 'Question finished. Press Talk to answer.'
+                self.status = 'Question finished. Press Talk to continue.'
             else:
+                if source['kind']=='worker_result':
+                    self.focus = {'source':source['id'],'revision':source['revision'],'label':source.get('label','Work session')}
                 self.status = 'Reply finished. Press Talk to continue.'
             self.retain()
         except (Unavailable,OSError,ValueError,KeyError,TypeError) as error:

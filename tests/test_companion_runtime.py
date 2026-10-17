@@ -98,7 +98,7 @@ class Runtime(unittest.IsolatedAsyncioTestCase):
         if self.runtime.play_task:await self.runtime.play_task
         self.temporary.cleanup()
 
-    async def test_no_startup_sensor_or_audio_and_multipart_question_then_exact_voice_reply(self):
+    async def test_no_startup_sensor_or_audio_and_multipart_question_then_contextual_voice_original(self):
         self.assertEqual(self.device.starts,0)
         self.assertEqual(self.controller.audio_calls,0)
         self.assertEqual(self.views[-1]['button'],'Listen to question')
@@ -110,11 +110,11 @@ class Runtime(unittest.IsolatedAsyncioTestCase):
         await self.runtime.button()
         ident = self.runtime.state['current']
         frozen = self.drafts.read(ident)['reply']
-        self.assertEqual(frozen,{'source':self.controller.source['id'],'revision':self.controller.source['revision']})
+        self.assertEqual(frozen,{'source':self.controller.source['id'],'revision':self.controller.source['revision'],'context_only':True})
         self.assertEqual(self.controller.posts,[])
         await self.runtime.button()
         self.assertEqual(len(self.controller.posts),1)
-        self.assertEqual(self.controller.posts[0]['headers']['X-Reply-Source'],frozen['source'])
+        self.assertEqual(self.controller.posts[0]['headers']['X-Reply-Source'],'context:'+frozen['source'])
         self.assertEqual(self.drafts.read(ident)['remote_phase'],'answered')
         self.assertIsNone(self.runtime.state['current'])
 
@@ -149,6 +149,55 @@ class Runtime(unittest.IsolatedAsyncioTestCase):
         await self.runtime.button()
         self.assertIsNone(self.drafts.read(self.runtime.state['current'])['reply'])
         self.controller.release.set()
+        await self.runtime.play_task
+
+    async def test_barge_in_during_audible_question_keeps_context_without_answer_selection(self):
+        self.runtime.playback=[sys.executable,'-c','import time;time.sleep(1)']
+        await self.runtime.button()
+        for _ in range(100):
+            if self.runtime.player:break
+            await asyncio.sleep(.01)
+        self.assertIsNotNone(self.runtime.player)
+        await self.runtime.button()
+        original=self.drafts.read(self.runtime.state['current'])
+        self.assertEqual(original['reply'],{'source':self.controller.source['id'],
+            'revision':self.controller.source['revision'],'context_only':True})
+        self.assertIsNotNone(self.runtime.player.returncode)
+        self.assertEqual(self.device.starts,1)
+
+    async def test_audible_worker_takes_precedence_over_previous_question_or_worker(self):
+        await self.runtime.button();await self.runtime.play_task
+        old_question=dict(self.runtime.focus)
+        self.runtime.playback=[sys.executable,'-c','import time;time.sleep(1)']
+        for old in (old_question,{'source':'delivery:11111111-1111-1111-1111-111111111111',
+                'revision':'a'*64,'label':'#Alpha'}):
+            self.runtime.focus=old
+            self.controller.source={'id':'delivery:22222222-2222-2222-2222-222222222222',
+                'revision':'b'*64,'kind':'worker_result','label':'#Beta'}
+            self.runtime.player=None
+            self.runtime.launch_audio(dict(self.controller.source))
+            for _ in range(100):
+                if self.runtime.player:break
+                await asyncio.sleep(.01)
+            self.assertIsNotNone(self.runtime.player)
+            await self.runtime.button()
+            hint=self.drafts.read(self.runtime.state['current'])['reply']
+            self.assertEqual(hint,{'source':self.controller.source['id'],'revision':'b'*64,'context_only':True})
+            await self.runtime.play_task;await self.runtime.button(discard=True)
+
+    async def test_integrating_reply_barge_in_keeps_an_original_without_an_unsupported_hint(self):
+        self.runtime.armed=True
+        self.runtime.focus={'source':'request:'+'a'*32,'revision':'b'*64,'label':'Old question'}
+        self.controller.source={'id':'native:3','revision':'c'*64,'kind':'integrator_answer','label':'Integrator'}
+        self.runtime.playback=[sys.executable,'-c','import time;time.sleep(1)']
+        self.runtime.launch_audio(dict(self.controller.source))
+        for _ in range(100):
+            if self.runtime.player:break
+            await asyncio.sleep(.01)
+        self.assertIsNotNone(self.runtime.player)
+        await self.runtime.button()
+        self.assertIsNone(self.drafts.read(self.runtime.state['current'])['reply'])
+        self.assertEqual(self.device.starts,1)
         await self.runtime.play_task
 
     async def test_question_changed_during_real_player_lifetime_cannot_install_reply_focus(self):
