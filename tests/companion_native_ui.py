@@ -156,17 +156,46 @@ def main():
    assert len(journey.packets)==1 and journey.row('SELECT codex_thread_id FROM sessions WHERE thread_id=1')!=[(None,)]
    time.sleep(.3)  # GTK tick observes the settled receipt before the next gesture.
 
-   click();wait(lambda:counts['starts']==2);time.sleep(.4);click(1.2);wait(lambda:counts['stops']==2);time.sleep(.3)
-   assert len(counts['posts'])==1 and counts['starts']==2,'Long hold submitted or restarted a recording'
-   click();wait(lambda:counts['starts']==3);time.sleep(.4)
+   transcriber=journey.root/'asr.py';asr=transcriber.read_text()
+   def transcript(text):
+    transcriber.write_text(asr.replace('Continue requirement17 in this selected work.',text))
+   original_text='#Unknown Count four units under requirement23.'
+   transcript(original_text)
+   click();wait(lambda:counts['starts']==2);time.sleep(.6);click()
+   wait(lambda:len(counts['posts'])==2)
+   unresolved=counts['posts'][1]['id']
+   journey.wait(lambda:browser.status(unresolved)['phase']=='awaiting_target')
+   descriptor=browser.status(unresolved)['clarification']
+   wait(lambda:client_state().get('seen',{}).get(descriptor['id'])==descriptor['revision'])
+   assert b'Where should I send your message'in speech.calls[-1][2]
+   assert original_text.encode()in speech.calls[-1][2]
+   assert len(journey.instructions(7))==1
+   transcript('Use Alpha for that saved message.')
+   time.sleep(.3);click();wait(lambda:counts['starts']==3);time.sleep(.6);click()
+   wait(lambda:len(counts['posts'])==3)
+   clarification=counts['posts'][2]['id']
+   journey.wait(lambda:browser.status(clarification)['phase']=='accepted')
+   assert len(journey.instructions(7))==1,'Playback context implicitly routed the pending original'
+   journal=json.loads(journey.row('SELECT doc FROM conversation_inputs WHERE id=?',(clarification,))[0][0])
+   assert journal['reply']=={'source':descriptor['id'],'revision':descriptor['revision'],'context_only':True}
+   journey.call('route-gtk-voice-target-clarification','resolve_route',
+    {'pending_input':unresolved,'input_ref':clarification,'selector':'Alpha'})
+   journey.wait(lambda:len(journey.instructions(7))==2 and journey.instructions(7)[1][1]=='accepted')
+   selected=browser.status(unresolved)
+   assert selected['text']==original_text and selected['routing']['selection_input']==clarification
+   assert 'Count four units'in json.loads(journey.instructions(7)[1][2])['text']
+   time.sleep(.3)
+   click();wait(lambda:counts['starts']==4);time.sleep(.4);click(1.2);wait(lambda:counts['stops']==4);time.sleep(.3)
+   assert len(counts['posts'])==3 and counts['starts']==4,'Long hold submitted or restarted a recording'
+   click();wait(lambda:counts['starts']==5);time.sleep(.4)
    class Data(C.Union):_fields_=[('b',C.c_char*20),('s',C.c_short*10),('l',C.c_long*5)]
    class Message(C.Structure):_fields_=[('type',C.c_int),('serial',C.c_ulong),('send_event',C.c_int),('display',C.c_void_p),('window',C.c_ulong),('message_type',C.c_ulong),('format',C.c_int),('data',Data)]
    class Event(C.Union):_fields_=[('message',Message),('pad',C.c_long*24)]
    x.XInternAtom.argtypes=[C.c_void_p,C.c_char_p,C.c_int];x.XInternAtom.restype=C.c_ulong;x.XSendEvent.argtypes=[C.c_void_p,C.c_ulong,C.c_int,C.c_long,C.POINTER(Event)]
    event=Event();event.message.type=33;event.message.display=d;event.message.window=wid;event.message.message_type=x.XInternAtom(d,b'WM_PROTOCOLS',0);event.message.format=32;event.message.data.l[0]=x.XInternAtom(d,b'WM_DELETE_WINDOW',0)
    x.XSendEvent(d,wid,0,0,C.byref(event));x.XFlush(d);gui.wait(timeout=24)
-   assert gui.returncode==0 and counts['stops']==3 and len(counts['posts'])==1 and record['pid']is None
-   proof={'result':'PASS','actualGTK':True,'realXTestButtonEvents':True,'realTLS':True,'actualFFmpegSyntheticCapture':True,'starts':counts['starts'],'selectedStops':counts['stops'],'voicePosts':len(counts['posts']),'noStartupMedia':True,'holdDiscardsWithoutPost':True,'closeStopsSelectedCapture':True,'physicalSensors':False,'models':0,'controller':'actual Telecodex native-controller/SQLite/HTTP; synthetic App Server and ASR peers','nativeQuestionAnswered':True,'parallelWorkerResultPlayed':True,'classifiedAnswerFromOriginal':True,'integratingNativeContexts':1,'speechCalls':len(speech.calls)}
+   assert gui.returncode==0 and counts['stops']==5 and len(counts['posts'])==3 and record['pid']is None
+   proof={'result':'PASS','actualGTK':True,'realXTestButtonEvents':True,'realTLS':True,'actualFFmpegSyntheticCapture':True,'starts':counts['starts'],'selectedStops':counts['stops'],'voicePosts':len(counts['posts']),'noStartupMedia':True,'holdDiscardsWithoutPost':True,'closeStopsSelectedCapture':True,'physicalSensors':False,'models':0,'controller':'actual Telecodex native-controller/SQLite/HTTP; synthetic App Server and ASR peers','nativeQuestionAnswered':True,'parallelWorkerResultPlayed':True,'classifiedAnswerFromOriginal':True,'integratingNativeContexts':1,'spokenDestinationClarification':True,'busyWorkerReceivedOriginal':True,'speechCalls':len(speech.calls)}
    (OUT/'proof.json').write_text(json.dumps(proof,indent=2)+'\n');print(json.dumps(proof),flush=True)
   finally:
    (OUT/'client-final.json').write_text(json.dumps(client_state(),indent=2)+'\n')

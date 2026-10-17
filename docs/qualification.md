@@ -300,3 +300,22 @@ partial audible questions, and integrating replies without unsupported hints.
 Source review found and resolved preference for stale focus and unsupported
 native-answer hints. Real model quality, the integrating model's own blocking
 questions, selected receiving adoption/enrollment and audibility remain open.
+
+## Spoken destination clarification — 2026-10-17
+
+The existing actual GTK/XTest/TLS/controller/SQLite/FFmpeg journey now also
+passes an unrouted original through a spoken destination question, a later
+contextual voice response and explicit controller resolution. The busy worker
+receives the unchanged original task rather than the clarification. The journey
+retains its semantic native-question answer, concurrent labeled result, long
+hold and close coverage: five selected captures stop and three voice clips are
+submitted. Native, ASR and speech peers remain synthetic; model calls and
+physical sensors remain zero. This is not real-model or hearing acceptance.
+
+Twenty transport/runtime tests and all twenty-two Python tests pass. New
+regressions cover recovery of a current clarification descriptor from a retained
+terminal receipt without POST, exact descriptor-to-original identity and
+contextual route-question playback/response. Default Clippy and embedded-helper
+build pass. Focused independent source review found no actionable issue.
+Selected receiving adoption, device enrollment and physical acceptance remain
+open.

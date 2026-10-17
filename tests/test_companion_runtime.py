@@ -50,6 +50,7 @@ class Controller:
         self.entered, self.release = threading.Event(), threading.Event()
         self.release.set()
         self.voice_phase = 'answered'
+        self.originals = []
         self.source = {'id':'request:'+'a'*32,'revision':'b'*64,'kind':'native_question','label':'#Alpha'}
 
     def json(self, method, path, body=None, headers=None):
@@ -68,6 +69,8 @@ class Controller:
             if self.changed:raise client.Unavailable('Question changed',status=409)
             offset = int(urllib.parse.parse_qs(url.query)['offset'][0])
             return {**self.source,'offset':offset,'text':'Selected current question','next_offset':10 if offset==0 else None}
+        if url.path=='/api/interaction/inputs':
+            return {'items':self.originals,'cursor':0,'more':False}
         if url.path.startswith('/api/interaction/inputs/'):
             return {'id':url.path.rsplit('/',1)[-1],'phase':'preparing','routing':None}
         raise AssertionError(path)
@@ -117,6 +120,31 @@ class Runtime(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.controller.posts[0]['headers']['X-Reply-Source'],'context:'+frozen['source'])
         self.assertEqual(self.drafts.read(ident)['remote_phase'],'answered')
         self.assertIsNone(self.runtime.state['current'])
+
+    async def test_destination_question_is_discovered_played_and_retained_as_context(self):
+        self.controller.question=False
+        self.controller.source={'id':'input:11111111-1111-4111-8111-111111111111',
+            'revision':'a'*64,'kind':'route_clarification','label':'Destination needed'}
+        self.controller.originals=[{'id':self.controller.source['id'][6:],'phase':'awaiting_target',
+            'retired':False,'clarification':dict(self.controller.source)}]
+        self.runtime.state['agenda']=[]
+        await self.runtime.poll()
+        self.assertEqual(self.views[-1]['button'],'Listen to question')
+        await self.runtime.button();await self.runtime.play_task
+        self.assertEqual(self.device.starts,0)
+        await self.runtime.button()
+        self.assertEqual(self.drafts.read(self.runtime.state['current'])['reply'],
+            {'source':self.controller.source['id'],'revision':'a'*64,'context_only':True})
+        self.controller.voice_phase='accepted'
+        await self.runtime.button()
+        self.assertEqual(self.controller.posts[0]['headers']['X-Reply-Source'],'context:'+self.controller.source['id'])
+
+    async def test_other_original_cannot_install_a_destination_descriptor_under_this_receipt(self):
+        self.runtime.state['agenda']=[]
+        self.runtime.enqueue_clarification({'id':'22222222-2222-4222-8222-222222222222',
+            'phase':'awaiting_target','clarification':{'id':'input:11111111-1111-4111-8111-111111111111',
+            'revision':'a'*64,'kind':'route_clarification','label':'Other original'}})
+        self.assertEqual(self.runtime.state['agenda'],[])
 
     async def test_barge_in_during_held_synthesis_never_plays_or_selects_old_source(self):
         self.controller.question=False;self.controller.release.clear()
