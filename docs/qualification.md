@@ -281,3 +281,22 @@ tests, locked Rust tests with and without UI, formatting and default-feature
 Clippy pass. Selected Wayland installation, actual device enrollment, physical
 button/hearing and complete conversational intent/clarification acceptance remain
 open; these synthetic observations do not close the device issue.
+
+## Contextual voice intent — 2026-10-17
+
+The companion now sends a source as context rather than an implicit question
+answer. Against the contextual-capable Telecodex controller, the actual GTK/
+XTest/TLS/FFmpeg journey passed with synthetic native/ASR/speech peers. A voice
+original reached one integrating native context without automatically answering;
+the synthetic integrator selected `question_context` and `answer_question`, and
+the exact retained transcript answered Alpha. Beta's concurrent labeled result
+played after capture. Three selected captures stopped and one was submitted;
+hold and close retained their scoped behavior. No physical sensors or inference
+were used. This qualifies the mechanism, not real semantic classification.
+
+Seventeen transport/runtime tests and all nineteen Python tests pass. New owned
+player regressions cover question→worker and worker→worker barge-in context,
+partial audible questions, and integrating replies without unsupported hints.
+Source review found and resolved preference for stale focus and unsupported
+native-answer hints. Real model quality, the integrating model's own blocking
+questions, selected receiving adoption/enrollment and audibility remain open.

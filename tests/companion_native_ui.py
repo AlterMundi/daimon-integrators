@@ -140,12 +140,20 @@ def main():
 
    subprocess.run(['ffmpeg','-hide_banner','-loglevel','error','-y','-f','x11grab','-video_size','800x600','-i',display,'-frames:v','1',str(OUT/'listening.png')],check=True,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL)
    click();wait(lambda:len(counts['posts'])==1);wait(lambda:not client_state().get('current'))
+   submitted=counts['posts'][0];assert submitted['status']==200
+   journey.wait(lambda:browser.status(submitted['id'])['phase']=='accepted')
+   assert not journey.native_answers,'Reported context implicitly answered a question'
+   view=journey.call('route-gtk-question-context','question_context',{'input_ref':submitted['id']})
+   assert view['matches_current']and view['question']['kind']=='question'
+   journey.call('route-gtk-classified-answer','answer_question',{'input_ref':submitted['id']})
    journey.wait(lambda:any(v['id']=='canonical-gtk-question'for v in journey.native_answers))
    answer=next(v for v in journey.native_answers if v['id']=='canonical-gtk-question')['result']['answers']['scope']['answers'][0]
    assert '[Committed voice input]'in answer and 'Continue requirement17'in answer
-   submitted=counts['posts'][0];assert submitted['status']==200 and browser.status(submitted['id'])['phase']=='answered'
+   assert '[Device-reported conversational context]'not in answer
+   assert browser.status(submitted['id'])['phase']=='answered'
    wait(lambda:len(speech.calls)>=2);wait(lambda:len(client_state().get('seen',{}))>=2)
-   assert not journey.packets and journey.row('SELECT codex_thread_id FROM sessions WHERE thread_id=1')==[(None,)]
+   assert b'#Beta. Independent Beta result'in speech.calls[1][2]
+   assert len(journey.packets)==1 and journey.row('SELECT codex_thread_id FROM sessions WHERE thread_id=1')!=[(None,)]
    time.sleep(.3)  # GTK tick observes the settled receipt before the next gesture.
 
    click();wait(lambda:counts['starts']==2);time.sleep(.4);click(1.2);wait(lambda:counts['stops']==2);time.sleep(.3)
@@ -158,7 +166,7 @@ def main():
    event=Event();event.message.type=33;event.message.display=d;event.message.window=wid;event.message.message_type=x.XInternAtom(d,b'WM_PROTOCOLS',0);event.message.format=32;event.message.data.l[0]=x.XInternAtom(d,b'WM_DELETE_WINDOW',0)
    x.XSendEvent(d,wid,0,0,C.byref(event));x.XFlush(d);gui.wait(timeout=24)
    assert gui.returncode==0 and counts['stops']==3 and len(counts['posts'])==1 and record['pid']is None
-   proof={'result':'PASS','actualGTK':True,'realXTestButtonEvents':True,'realTLS':True,'actualFFmpegSyntheticCapture':True,'starts':counts['starts'],'selectedStops':counts['stops'],'voicePosts':len(counts['posts']),'noStartupMedia':True,'holdDiscardsWithoutPost':True,'closeStopsSelectedCapture':True,'physicalSensors':False,'models':0,'controller':'actual Telecodex native-controller/SQLite/HTTP; synthetic App Server and ASR peers','nativeQuestionAnswered':True,'parallelWorkerResultPlayed':True,'coldFrontUnchanged':True,'speechCalls':len(speech.calls)}
+   proof={'result':'PASS','actualGTK':True,'realXTestButtonEvents':True,'realTLS':True,'actualFFmpegSyntheticCapture':True,'starts':counts['starts'],'selectedStops':counts['stops'],'voicePosts':len(counts['posts']),'noStartupMedia':True,'holdDiscardsWithoutPost':True,'closeStopsSelectedCapture':True,'physicalSensors':False,'models':0,'controller':'actual Telecodex native-controller/SQLite/HTTP; synthetic App Server and ASR peers','nativeQuestionAnswered':True,'parallelWorkerResultPlayed':True,'classifiedAnswerFromOriginal':True,'integratingNativeContexts':1,'speechCalls':len(speech.calls)}
    (OUT/'proof.json').write_text(json.dumps(proof,indent=2)+'\n');print(json.dumps(proof),flush=True)
   finally:
    (OUT/'client-final.json').write_text(json.dumps(client_state(),indent=2)+'\n')

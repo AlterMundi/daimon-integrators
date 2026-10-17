@@ -45,13 +45,22 @@ plays that question. After that, a recording gesture takes priority over other
 queued questions. Local microphone observation runs independently of remote
 requests, so a stalled connection cannot make an old sample appear current.
 
-Question playback is ordered and source-linked across all parts. A completed,
-still-current question supplies the frozen reply reference for the next clip.
-The server validates that reference again after transcription. An explicit
-`#Topic` follows the controller's topic override. General semantic intent changes
-and audible clarification for unrouted originals still need completion before
-claiming unrestricted voice-only use. Work-result labels are currently displayed;
-this does not establish that every source label is spoken.
+Question playback is ordered and source-linked across all parts. A completed
+question or worker result supplies an immutable contextual reference for the next
+clip. Barge-in uses the currently audible supported source rather than an older
+question. Starting a new playback clears the previous focus. Integrating replies
+stay in the integrating native history and do not create unsupported device hints.
+
+The reference uses `context_only: true`: the server retains the original and
+lets the integrating model decide whether this is an answer, another task or a
+clarification. It does not automatically answer or choose that source's session.
+`question_context` inspects the reported question and `answer_question` consumes
+only the exact retained original if that question is still current. An explicit
+`#Topic` continues to follow the controller's shortcut. Older dashboards refuse
+the `context:` wire prefix rather than silently falling back to a direct answer.
+Worker audio includes the certified session label on the first part when the
+selected server has Telecodex PR154. Real semantic quality and audible clarification
+for unrouted originals still require complete receiving qualification.
 
 An interrupted audio render never causes a speculative repeat. Barge-in stops
 only the owned player before starting the microphone. Paused/unavailable sources
