@@ -163,6 +163,41 @@ class Runtime(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.drafts.read(self.runtime.state['current'])['reply'],
             {'source':self.controller.source['id'],'revision':'a'*64,'context_only':True})
 
+    async def test_matrix_result_cursor_playback_and_context_use_existing_button(self):
+        self.controller.question=False
+        self.controller.source={'id':'matrix:11111111-1111-4111-8111-111111111111',
+            'revision':'a'*64,'kind':'matrix_result','label':'#SelectedPeer'}
+        self.runtime.state['agenda']=[]
+        # A persisted two-stream cursor migrates through ordinary observation.
+        self.runtime.state['cursor']={'delivery':0,'native':0}
+        original=self.controller.json
+        paths=[]
+        def json_api(method,path,body=None,headers=None):
+            paths.append(path)
+            if urllib.parse.urlsplit(path).path=='/api/interaction':
+                return {'binding':'c'*64,'can_speak':True,'can_listen':True,
+                    'items':[dict(self.controller.source)],
+                    'cursor':{'native':0,'delivery':0,'matrix':1},
+                    'newest':{'native':0,'delivery':0,'matrix':1}}
+            return original(method,path,body,headers)
+        self.controller.json=json_api
+        await self.runtime.poll()
+        self.assertEqual(self.runtime.state['cursor']['matrix'],1)
+        self.assertEqual(len(self.runtime.state['agenda']),1)
+        self.assertEqual(self.device.starts,0)
+        self.assertEqual(self.controller.audio_calls,0)
+        self.assertTrue(all('matrix=0' in path for path in paths if urllib.parse.urlsplit(path).path=='/api/interaction'))
+        self.assertEqual(self.views[-1]['button'],'Listen to reply')
+        await self.runtime.button();await self.runtime.play_task
+        self.assertEqual(self.device.starts,0)
+        await self.runtime.poll()
+        self.assertFalse(self.runtime.state['agenda'],'A retained Matrix result must not enqueue twice')
+        self.assertEqual(self.runtime.focus['source'],self.controller.source['id'])
+        await self.runtime.button()
+        self.assertEqual(self.device.starts,1)
+        self.assertEqual(self.drafts.read(self.runtime.state['current'])['reply'],
+            {'source':self.controller.source['id'],'revision':'a'*64,'context_only':True})
+
     async def test_first_gesture_still_prioritizes_questions_over_replies(self):
         self.runtime.state['agenda'].insert(0,{'id':'delivery:11111111-1111-4111-8111-111111111111',
             'revision':'a'*64,'kind':'worker_result','label':'#Beta'})

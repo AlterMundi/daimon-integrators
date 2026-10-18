@@ -46,10 +46,16 @@ queued questions. Local microphone observation runs independently of remote
 requests, so a stalled connection cannot make an old sample appear current.
 
 Question playback is ordered and source-linked across all parts. A completed
-question or worker result supplies an immutable contextual reference for the next
+question, worker result or explicitly selected Matrix reply supplies an immutable
+contextual reference for the next
 clip. Barge-in uses the currently audible supported source rather than an older
 question. Starting a new playback clears the previous focus. Integrating replies
 stay in the integrating native history and do not create unsupported device hints.
+
+Matrix replies use the same source/revision audio checks and first-gesture reply
+playback. The optional Matrix cursor is retained independently of local results;
+existing two-stream client state continues from its retained local cursors. This
+client neither selects a peer nor approves receiving execution.
 
 The reference uses `context_only: true`: the server retains the original and
 lets the integrating model decide whether this is an answer, another task or a
