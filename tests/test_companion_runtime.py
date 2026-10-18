@@ -139,6 +139,40 @@ class Runtime(unittest.IsolatedAsyncioTestCase):
         await self.runtime.button()
         self.assertEqual(self.controller.posts[0]['headers']['X-Reply-Source'],'context:'+self.controller.source['id'])
 
+    async def test_reopened_pending_reply_plays_on_first_gesture_without_capture(self):
+        self.controller.question = False
+        self.controller.source = {'id':'delivery:11111111-1111-4111-8111-111111111111',
+            'revision':'a'*64,'kind':'worker_result','label':'#Beta'}
+        self.runtime.state['agenda'] = []
+        self.runtime.enqueue(dict(self.controller.source))
+        self.runtime.retain()
+        await self.runtime.close()
+        self.runtime = client.Companion(self.controller,self.drafts,self.device,
+            [sys.executable,'-c','import time;time.sleep(.03)'],self.views.append)
+        await self.runtime.poll()
+        self.assertEqual(self.controller.audio_calls,0)
+        self.assertEqual(self.device.starts,0)
+        self.assertEqual(self.views[-1]['button'],'Listen to reply')
+        await self.runtime.button()
+        self.assertIsNotNone(self.runtime.play_task)
+        await self.runtime.play_task
+        self.assertEqual(self.device.starts,0)
+        self.assertEqual(self.runtime.state['seen'][self.controller.source['id']],'a'*64)
+        await self.runtime.button()
+        self.assertEqual(self.device.starts,1)
+        self.assertEqual(self.drafts.read(self.runtime.state['current'])['reply'],
+            {'source':self.controller.source['id'],'revision':'a'*64,'context_only':True})
+
+    async def test_first_gesture_still_prioritizes_questions_over_replies(self):
+        self.runtime.state['agenda'].insert(0,{'id':'delivery:11111111-1111-4111-8111-111111111111',
+            'revision':'a'*64,'kind':'worker_result','label':'#Beta'})
+        self.runtime.publish()
+        self.assertEqual(self.views[-1]['button'],'Listen to question')
+        await self.runtime.button()
+        self.assertEqual(self.runtime.source['kind'],'native_question')
+        await self.runtime.play_task
+        self.assertEqual(self.device.starts,0)
+
     async def test_other_original_cannot_install_a_destination_descriptor_under_this_receipt(self):
         self.runtime.state['agenda']=[]
         self.runtime.enqueue_clarification({'id':'22222222-2222-4222-8222-222222222222',
