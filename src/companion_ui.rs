@@ -213,9 +213,9 @@ pub fn run(config: &Path) -> Result<(), Box<dyn std::error::Error>> {
     unsafe {
         let window = gtk_window_new(0);
         gtk_window_set_title(window, c("Daimon conversation").as_ptr());
-        gtk_window_set_default_size(window, 620, 420);
-        gtk_container_set_border_width(window, 28);
-        let box_ = gtk_box_new(1, 18);
+        gtk_window_set_default_size(window, 360, 0);
+        gtk_container_set_border_width(window, 14);
+        let box_ = gtk_box_new(1, 10);
         gtk_container_add(window, box_);
         let source = label(box_, "Your conversation");
         let button = gtk_button_new_with_label(c("Talk").as_ptr());
@@ -227,7 +227,7 @@ pub fn run(config: &Path) -> Result<(), Box<dyn std::error::Error>> {
             "Press to talk or send. Hold to discard a recording. Work continues in its sessions.",
         );
         let css = gtk_css_provider_new();
-        let style=c("window { background: #07101a; color: #e8f2f1; font-family: Sans; font-size: 18px; } button { background: #102b31; color: #9ce8cf; border: 2px solid #83d5dc; border-radius: 24px; min-height: 130px; font-size: 40px; padding: 20px; } button:active { background: #214b49; } button:disabled { color: #87969a; }");
+        let style=c("window { background: #07101a; color: #e8f2f1; font-family: Sans; font-size: 18px; } button { background: #102b31; color: #9ce8cf; border: 2px solid #83d5dc; border-radius: 24px; min-height: 80px; font-size: 30px; padding: 12px; } button:active { background: #214b49; } button:disabled { color: #87969a; }");
         gtk_css_provider_load_from_data(css, style.as_ptr(), -1, ptr::null_mut());
         gtk_style_context_add_provider(gtk_widget_get_style_context(window), css, 800);
         gtk_style_context_add_provider(gtk_widget_get_style_context(button), css, 800);
