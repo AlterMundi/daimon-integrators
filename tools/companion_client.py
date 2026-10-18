@@ -334,7 +334,7 @@ class Companion:
         return await asyncio.to_thread(self.transport.json,method,path,body)
 
     def enqueue(self, source):
-        if (not isinstance(source.get('id'),str) or not re.fullmatch(r'(?:request:[a-f0-9]{32}|(?:delivery|input):[a-f0-9-]{36}|native:[1-9][0-9]{0,18})',source['id'])
+        if (not isinstance(source.get('id'),str) or not re.fullmatch(r'(?:request:[a-f0-9]{32}|(?:delivery|input|matrix):[a-f0-9-]{36}|native:[1-9][0-9]{0,18})',source['id'])
                 or not re.fullmatch(r'[a-f0-9]{64}',source.get('revision',''))
                 or source.get('current') is False or source.get('correction_pending')):
             return True
@@ -425,7 +425,7 @@ class Companion:
             self.busy = True
             created = None
             try:
-                audible = self.source if (self.source and self.source['kind'] in ('native_question','worker_result','route_clarification')
+                audible = self.source if (self.source and self.source['kind'] in ('native_question','worker_result','matrix_result','route_clarification')
                     and self.player and self.player.returncode is None) else None
                 await self.stop_audio()
                 ident = self.state['current']
@@ -523,7 +523,8 @@ class Companion:
         try:
             cursor = self.state['cursor']
             query = urllib.parse.urlencode({'delivery':cursor['delivery'] if cursor else 0,
-                'native':cursor['native'] if cursor else 0,'direction':'after' if cursor else 'before'})
+                'native':cursor['native'] if cursor else 0,
+                'matrix':cursor.get('matrix',0) if cursor else 0,'direction':'after' if cursor else 'before'})
             page = await self.api('GET','/api/interaction?'+query)
             if self.binding and self.binding!=page['binding']:
                 await self.stop_audio()
@@ -543,7 +544,7 @@ class Companion:
                 self.state['cursor'] = page['newest']
             # Refresh recent revisions without letting metadata skip unread
             # forward pages. Questions have their own bounded rotating cursor.
-            recent = await self.api('GET','/api/interaction?delivery=0&native=0&direction=before')
+            recent = await self.api('GET','/api/interaction?delivery=0&native=0&matrix=0&direction=before')
             if recent['binding'] != self.binding:
                 raise Unavailable('Conversation changed while refreshing.')
             for source in recent['items']:
@@ -675,7 +676,7 @@ class Companion:
                 self.focus = {'source':source['id'],'revision':source['revision'],'label':source.get('label','Question')}
                 self.status = 'Question finished. Press Talk to continue.'
             else:
-                if source['kind']=='worker_result':
+                if source['kind'] in ('worker_result','matrix_result'):
                     self.focus = {'source':source['id'],'revision':source['revision'],'label':source.get('label','Work session')}
                 self.status = 'Reply finished. Press Talk to continue.'
             self.retain()
