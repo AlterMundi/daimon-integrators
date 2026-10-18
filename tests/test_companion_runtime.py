@@ -98,7 +98,7 @@ class Runtime(unittest.IsolatedAsyncioTestCase):
     async def asyncTearDown(self):
         self.controller.release.set();self.device.release.set()
         await self.runtime.close()
-        if self.runtime.play_task:await self.runtime.play_task
+        if self.runtime.play_task and not self.runtime.play_task.cancelled():await self.runtime.play_task
         self.temporary.cleanup()
 
     async def test_no_startup_sensor_or_audio_and_multipart_question_then_contextual_voice_original(self):
@@ -107,6 +107,8 @@ class Runtime(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.views[-1]['button'],'Listen to question')
         await self.runtime.button()
         await self.runtime.play_task
+        self.assertFalse(list(self.drafts.root.glob('.audio-*.wav')))
+        self.assertFalse((self.drafts.root/'playback.wav').exists())
         self.assertEqual(self.controller.audio_calls,2)
         self.assertEqual(self.runtime.focus['source'],self.controller.source['id'])
         self.assertEqual(self.device.starts,0)
@@ -260,6 +262,7 @@ class Runtime(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(original['reply'],{'source':self.controller.source['id'],
             'revision':self.controller.source['revision'],'context_only':True})
         self.assertIsNotNone(self.runtime.player.returncode)
+        self.assertFalse(list(self.drafts.root.glob('.audio-*.wav')))
         self.assertEqual(self.device.starts,1)
 
     async def test_audible_worker_takes_precedence_over_previous_question_or_worker(self):
@@ -339,7 +342,49 @@ class Runtime(unittest.IsolatedAsyncioTestCase):
             release.set();await button;await self.runtime.play_task
         self.assertEqual(self.device.starts,1)
         self.assertIsNotNone(self.runtime.player.returncode)
+        self.assertFalse(list(self.drafts.root.glob('.audio-*.wav')))
         self.assertIsNone(self.runtime.focus)
+
+    async def test_cancel_during_second_player_start_reaps_exact_child_and_file(self):
+        self.controller.question=False;self.runtime.state['agenda']=[]
+        entered,release=asyncio.Event(),asyncio.Event()
+        original=asyncio.create_subprocess_exec
+        players=[]
+        async def held(*args,**kwargs):
+            if players:
+                entered.set();await release.wait()
+            player=await original(*args,**kwargs);players.append(player)
+            return player
+        with patch('asyncio.create_subprocess_exec',held):
+            self.runtime.launch_audio(dict(self.controller.source))
+            await asyncio.wait_for(entered.wait(),2)
+            self.runtime.play_task.cancel()
+            await asyncio.sleep(.02)
+            self.assertFalse(self.runtime.play_task.done())
+            release.set()
+            with self.assertRaises(asyncio.CancelledError):await self.runtime.play_task
+        self.assertEqual(len(players),2)
+        self.assertTrue(all(p.returncode is not None for p in players))
+        self.assertFalse(list(self.drafts.root.glob('.audio-*.wav')))
+        self.assertNotIn(self.controller.source['id'],self.runtime.state['seen'])
+
+    async def test_failed_stopped_capture_can_be_discarded_without_upload(self):
+        self.controller.question=False;self.runtime.state['agenda']=[]
+        await self.runtime.button();ident=self.runtime.state['current']
+        self.device.managed.update(phase='failed',pid=None)
+        def failed_stop(output):
+            self.assertEqual(str(output),self.device.managed['output'])
+            self.device.stops += 1
+            return {'ok':True,'stage':'stop_requested'}
+        self.device.stop=failed_stop
+        await self.runtime.button(discard=True)
+        self.assertEqual(self.device.managed['phase'],'failed')
+        self.assertIsNone(self.runtime.state['current'])
+        self.assertFalse(self.drafts.audio(ident).exists())
+        self.assertEqual(self.drafts.read(ident)['phase'],'discarded')
+        self.assertEqual(self.controller.posts,[])
+        await self.runtime.button()
+        self.assertEqual(self.device.starts,2)
 
     async def test_new_voice_can_be_recorded_while_earlier_asr_is_preparing(self):
         self.controller.question=False;self.controller.voice_phase='preparing';self.runtime.state['agenda']=[]

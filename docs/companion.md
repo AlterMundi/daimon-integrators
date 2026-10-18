@@ -122,3 +122,24 @@ or opens physical devices. Native question response, concurrent result handling,
 long-hold retention and closing a selected capture are separate from real
 Wayland/device installation, microphone quality, audible comprehension and
 physical button acceptance. Those receiving observations remain required.
+
+
+## Disposable conversation audio
+
+A matching server-committed transcript is saved locally before its captured audio
+is discarded. The check binds original UUID and both audio hashes; terminal
+routing alone is insufficient. Interrupted cleanup resumes from its durable
+local retirement receipt on reopening, without resending or invoking ASR.
+Unconfirmed/mismatched inputs remain inspectable. A new capture reserves space
+for a maximum 20 MiB clip within a 256 MiB capture budget; retained uncertain
+recordings can refuse new capture rather than being silently deleted.
+An explicit local discard removes a stopped, finalized, unsubmitted recording.
+Submitted work is never withdrawn by that gesture.
+
+Playback uses one private temporary file per selected source part. Completion,
+barge-in and failures stop only the owned player and remove that file. Old tasks
+cannot unlink a newer playback file. This installs no automatic recording,
+background observer or device activity. Opening the exclusively owned profile expires only private playback files older
+than five minutes, including legacy `playback.wav`. A 32 MiB playback budget
+refuses additional temporary audio when protected files occupy it. Arbitrary
+unrelated media is untouched.
