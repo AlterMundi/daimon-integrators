@@ -147,11 +147,52 @@ class Transport:
         return value
 
 
+MAX_CAPTURE_BYTES = 20*1024*1024
+CAPTURE_BUDGET_BYTES = 256*1024*1024
+
+
 class Drafts:
     def __init__(self, root):
         self.root = directory(root)
         self.media = directory(self.root/'captures')
         self.lock = threading.RLock()
+        self.prune_playback()
+        # Finish only already committed local retirement decisions after a crash.
+        for path in self.root.glob('*.json'):
+            try:
+                ident = path.stem
+                if str(uuid.UUID(ident)) == ident and self.read(ident).get('audio_disposable') is True:
+                    self.retire_audio(ident)
+            except (OSError,ValueError,KeyError,TypeError):
+                continue
+
+    def playback_paths(self):
+        return [*self.root.glob('.audio-*.wav'),self.root/'playback.wav']
+
+    def prune_playback(self):
+        # Called under the foreground profile lease on opening. Five minutes
+        # exceeds a bounded 120-second reply plus the owned player deadline.
+        for path in self.playback_paths():
+            try:
+                info = path.lstat()
+                if (stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid()
+                        and not info.st_mode & 0o077 and info.st_size <= 8*1024*1024
+                        and time.time()-info.st_mtime >= 300):
+                    path.unlink()
+                    sync_directory(self.root)
+            except FileNotFoundError:pass
+
+    def check_playback_budget(self, size):
+        used = 0
+        for path in self.playback_paths():
+            try:
+                info = path.lstat()
+                if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or info.st_mode & 0o077:
+                    raise Unavailable('Private playback storage needs attention.')
+                used += info.st_size
+            except FileNotFoundError:pass
+        if used + size > 32*1024*1024:
+            raise Unavailable('Temporary playback storage is full; text remains available.')
 
     def record(self, ident):
         if str(uuid.UUID(ident)) != ident:
@@ -159,6 +200,16 @@ class Drafts:
         return self.root/(ident+'.json')
 
     def begin(self, identity, binding, reply=None):
+        used = 0
+        for path in self.media.glob('*.m4a'):
+            if str(uuid.UUID(path.stem)) != path.stem:
+                raise Unavailable('Recording storage needs attention; text remains available.')
+            info = path.lstat()
+            if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
+                raise Unavailable('Recording storage needs attention; text remains available.')
+            used += info.st_size
+        if used + MAX_CAPTURE_BYTES > CAPTURE_BUDGET_BYTES:
+            raise Unavailable('Saved recordings fill the audio budget; text remains available.')
         ident = str(uuid.uuid4())
         doc = {'schema':'daimon-integrators.companion-draft/v1','id':ident,
             'device_identity':identity, 'binding':binding, 'reply':reply,
@@ -225,8 +276,73 @@ class Drafts:
             raise Unavailable('Saved recording admission remains unconfirmed')
         return self.remote(ident,result)
 
+    def retire_audio(self, ident):
+        """Retire a locally committed disposable payload, never uncertain input."""
+        with self.lock:
+            doc = self.read(ident)
+            if doc.get('audio_disposable') is not True:
+                return False
+            path = self.audio(ident)
+            try:
+                data = private_bytes(path,MAX_CAPTURE_BYTES)
+                if hashlib.sha256(data).hexdigest() != doc.get('audio_sha256'):
+                    return False
+                path.unlink()
+                sync_directory(self.media)
+                return True
+            except (OSError,ValueError):
+                return False  # Receipt survives; next opening can finish cleanup.
+
+    def discard_stopped(self, ident, snapshot):
+        managed = snapshot['managed']
+        if (managed.get('output') != str(self.audio(ident)) or managed.get('pid') is not None
+                or managed.get('phase') not in ('stopped','completed','failed','cancelled_before_capture')):
+            raise Unavailable('Local recording stop must be confirmed before discarding it.')
+        if self.read(ident)['phase'] not in ('capture_preparing','capturing'):
+            raise Unavailable('Submitted recordings cannot be discarded as local capture.')
+        try:
+            fd = os.open(self.audio(ident),os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            with os.fdopen(fd,'rb') as stream:
+                info = os.fstat(stream.fileno())
+                if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                        or info.st_size > MAX_CAPTURE_BYTES):
+                    raise Unavailable('Stopped recording is not a bounded owner file.')
+                os.fchmod(stream.fileno(),0o600)
+                os.fsync(stream.fileno())
+                data = stream.read(MAX_CAPTURE_BYTES+1)
+                if len(data) > MAX_CAPTURE_BYTES:
+                    raise Unavailable('Stopped recording exceeds its bound.')
+        except FileNotFoundError:
+            self.update(ident,phase='discarded')
+            return
+        self.update(ident,phase='discarded',audio_sha256=hashlib.sha256(data).hexdigest(),audio_disposable=True)
+        self.retire_audio(ident)
+
+    def discard_ready(self, ident):
+        with self.lock:
+            if self.read(ident)['phase'] != 'ready_to_send':
+                raise Unavailable('Stop this local recording before discarding it.')
+            self.update(ident,phase='discarded',audio_disposable=True)
+            self.retire_audio(ident)
+
+    def confirmed_transcript(self, ident, result):
+        doc = self.read(ident)
+        voice = result.get('voice') or {}
+        proof = voice.get('transcription') or {}
+        text = result.get('text')
+        if (result.get('id') != ident or not isinstance(text,str) or not text.strip()
+                or len(text.encode()) > 16000 or proof.get('capture_id') != ident
+                or not proof.get('committed_at') or not doc.get('audio_sha256')
+                or voice.get('audio_sha256') != doc['audio_sha256']
+                or proof.get('audio_sha256') != doc['audio_sha256']):
+            return
+        # Text/provenance must survive before its recovery audio is removed.
+        self.update(ident,transcript=text,transcription=proof,audio_disposable=True)
+        self.retire_audio(ident)
+
     def remote(self, ident, result):
         with self.lock:
+            self.confirmed_transcript(ident,result)
             previous = self.read(ident)
             if previous.get('remote_terminal'):
                 retained = {'id':ident,'phase':previous['remote_phase'],'retired':previous.get('remote_retired',False),
@@ -433,16 +549,17 @@ class Companion:
                     if ident:
                         doc = self.drafts.read(ident)
                         if doc['phase'] in ('capture_preparing','capturing'):
-                            snapshot = await asyncio.to_thread(self.capture.status)
-                            if snapshot['managed'].get('output')==str(self.drafts.audio(ident)):
-                                await self.stop_capture(ident)
-                            self.drafts.update(ident,phase='discarded')
+                            snapshot = await self.stop_capture(ident)
+                            self.drafts.discard_stopped(ident,snapshot)
+                            doc = self.drafts.read(ident)
+                        if doc['phase']=='ready_to_send':
+                            self.drafts.discard_ready(ident)
                         # Keep any uncertain server effect inspectable; this is
                         # a local gesture, never a withdrawal of submitted work.
                         if doc['phase']=='submission_unconfirmed' and ident not in self.state['pending']:
                             self.state['pending'].append(ident)
                         self.state['current'] = None
-                        self.status = 'Recording kept locally. You can start another message.'
+                        self.status = 'Local recording discarded. Submitted messages remain saved.'
                         self.retain()
                     return
                 was_armed = self.armed
@@ -621,6 +738,7 @@ class Companion:
 
     async def play(self, source, generation):
         offset = 0
+        audio, player, starting = None, None, None
         def current():return not self.closed and self.generation==generation and self.source is source
         try:
             while current():
@@ -640,14 +758,16 @@ class Companion:
                 if (part.get('id')!=source['id'] or part.get('revision')!=source['revision']
                         or headers.get('x-presentation-next-offset')!=('' if part['next_offset'] is None else str(part['next_offset']))):
                     raise Unavailable('Audio continuation changed.')
-                audio = self.drafts.root/'playback.wav'
-                fd,name = tempfile.mkstemp(prefix='.audio-',dir=self.drafts.root)
+                self.drafts.check_playback_budget(len(data))
+                fd,name = tempfile.mkstemp(prefix='.audio-',suffix='.wav',dir=self.drafts.root)
+                audio = Path(name)
                 with os.fdopen(fd,'wb') as stream:stream.write(data)
-                os.replace(name,audio)
-                self.player_start = asyncio.create_task(asyncio.create_subprocess_exec(*self.playback,str(audio),
+                player = None
+                starting = asyncio.create_task(asyncio.create_subprocess_exec(*self.playback,str(audio),
                     stdin=asyncio.subprocess.DEVNULL,stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.DEVNULL,start_new_session=True))
-                player = await self.player_start
+                self.player_start = starting
+                player = await asyncio.shield(starting)
                 self.player = player
                 if not current():
                     await self.stop_player(player)
@@ -658,6 +778,8 @@ class Companion:
                 except TimeoutError:
                     await self.stop_player(player)
                     raise Unavailable('Audio playback did not finish.') from None
+                audio.unlink(missing_ok=True)
+                audio = None
                 if not current():return
                 if code:raise Unavailable('Audio player is unavailable. You can still speak.')
                 after = await self.api('GET','/api/interaction/part?'+query)
@@ -688,6 +810,14 @@ class Companion:
                 self.status = 'Audio unavailable. Speak to continue; the original reply is retained.'
                 self.retain()
         finally:
+            # Each playback owns its own file and process. An older cancelled
+            # playback cannot remove a newer source's audio.
+            if player is None and starting is not None:
+                try:player = await asyncio.shield(starting)
+                except OSError:pass
+            if player is not None:
+                await self.stop_player(player)
+            if audio is not None:audio.unlink(missing_ok=True)
             if self.source is source:self.source = None
             self.publish()
 
@@ -703,8 +833,8 @@ class Companion:
             doc = self.drafts.read(ident)
             if doc['phase'] in ('capture_preparing','capturing'):
                 try:
-                    await self.stop_capture(ident)
-                    self.drafts.update(ident,phase='discarded')
+                    snapshot = await self.stop_capture(ident)
+                    self.drafts.discard_stopped(ident,snapshot)
                     self.state['current']=None
                     self.retain()
                 except (Unavailable,OSError):

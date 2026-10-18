@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+from unittest.mock import patch
 import socket
 import ssl
 import subprocess
@@ -104,6 +105,66 @@ class Companion(unittest.TestCase):
         snapshot={'managed':{'activity':'recording','phase':'stopped','pid':None,'output':str(media)}}
         self.drafts.finalize(doc['id'],snapshot)
         return doc,snapshot
+
+    def committed(self, doc):
+        digest=self.drafts.read(doc['id'])['audio_sha256']
+        return {'id':doc['id'],'phase':'accepted','text':'Confirmed transcript',
+            'voice':{'audio_sha256':digest,'transcription':{'capture_id':doc['id'],
+                'audio_sha256':digest,'committed_at':'2026-10-18T23:00:00Z'}}}
+
+    def test_transcript_commits_before_clip_disposal_and_survives_reopen(self):
+        doc,_=self.finalized();result=self.committed(doc)
+        self.drafts.remote(doc['id'],result)
+        self.assertFalse(self.drafts.audio(doc['id']).exists())
+        self.drafts=client.Drafts(self.root/'drafts')
+        retained=self.drafts.read(doc['id'])
+        self.assertEqual(retained['transcript'],result['text'])
+        self.assertEqual(retained['transcription'],result['voice']['transcription'])
+        self.assertEqual(len(self.requests),0)
+
+    def test_uncertain_and_mismatched_transcriptions_keep_original(self):
+        doc,_=self.finalized()
+        self.drafts.remote(doc['id'],{'id':doc['id'],'phase':'uncertain'})
+        self.assertTrue(self.drafts.audio(doc['id']).exists())
+        result=self.committed(doc);result['voice']['transcription']['audio_sha256']='0'*64
+        self.drafts.remote(doc['id'],result)
+        self.assertTrue(self.drafts.audio(doc['id']).exists())
+        self.assertNotIn('transcript',self.drafts.read(doc['id']))
+        # A late matching committed proof can retire audio without changing the
+        # original retained uncertainty or resubmitting it.
+        self.drafts.remote(doc['id'],self.committed(doc))
+        self.assertFalse(self.drafts.audio(doc['id']).exists())
+        self.assertEqual(self.drafts.read(doc['id'])['remote_phase'],'uncertain')
+
+    def test_crash_after_retirement_receipt_is_completed_without_network(self):
+        doc,_=self.finalized()
+        with patch.object(self.drafts,'retire_audio',return_value=False):
+            self.drafts.remote(doc['id'],self.committed(doc))
+        self.assertTrue(self.drafts.audio(doc['id']).exists())
+        self.drafts=client.Drafts(self.root/'drafts')
+        self.assertFalse(self.drafts.audio(doc['id']).exists())
+        self.assertEqual(len(self.requests),0)
+
+    def test_reopening_expires_only_old_private_playback_files(self):
+        old=self.drafts.root/'playback.wav';old.write_bytes(b'old playback');old.chmod(0o600)
+        os.utime(old,(0,0))
+        fresh=self.drafts.root/'.audio-fresh.wav';fresh.write_bytes(b'fresh');fresh.chmod(0o600)
+        unrelated=self.drafts.root/'interview.wav';unrelated.write_bytes(b'unrelated');unrelated.chmod(0o600)
+        os.utime(unrelated,(0,0))
+        self.drafts=client.Drafts(self.root/'drafts')
+        self.assertFalse(old.exists());self.assertTrue(fresh.exists());self.assertTrue(unrelated.exists())
+        self.drafts.check_playback_budget(8*1024*1024)
+        with self.assertRaises(client.Unavailable):self.drafts.check_playback_budget(32*1024*1024)
+
+    def test_audio_capacity_preserves_pending_and_refuses_before_capture(self):
+        doc,_=self.finalized()
+        with patch.object(client,'CAPTURE_BUDGET_BYTES',client.MAX_CAPTURE_BYTES):
+            with self.assertRaises(client.Unavailable):self.drafts.begin(self.transport.identity,'b'*64)
+        self.assertTrue(self.drafts.audio(doc['id']).exists())
+        self.drafts.discard_ready(doc['id'])
+        self.assertFalse(self.drafts.audio(doc['id']).exists())
+        with patch.object(client,'CAPTURE_BUDGET_BYTES',client.MAX_CAPTURE_BYTES):
+            self.drafts.begin(self.transport.identity,'b'*64)
 
     def test_lost_upload_receipt_recovers_after_restart_without_resending(self):
         doc,_=self.finalized();self.lose=True
