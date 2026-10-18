@@ -315,9 +315,9 @@ class Companion:
         doc = self.drafts.read(current) if current else None
         phase = doc['phase'] if doc else 'playing' if self.source else 'ready' if self.connected else 'reconnecting'
         button = 'Send voice' if phase in ('capturing','capture_preparing','ready_to_send') else 'Retry saved voice' if phase=='submission_unconfirmed' else 'Talk'
-        question = next((s for s in self.state['agenda'] if s['kind'] in ('native_question','route_clarification') and not s.get('paused')),None)
-        if not self.armed and question and not current:
-            button = 'Listen to question'
+        pending_audio = self.next_audio()
+        if not self.armed and pending_audio and not current:
+            button = 'Listen to question' if pending_audio['kind'] in ('native_question','route_clarification') else 'Listen to reply'
         local_ready = self.snapshot is not None
         status = self.status
         if not local_ready and not current and not self.source:
@@ -465,9 +465,9 @@ class Companion:
                     return
                 if not self.connected or not self.can_speak or not self.binding:
                     raise Unavailable('Reconnect before starting a recording.')
-                question = next((s for s in self.state['agenda'] if s['kind'] in ('native_question','route_clarification') and not s.get('paused')),None)
-                if question and not self.focus and not was_armed:
-                    self.launch_audio(question)
+                pending_audio = self.next_audio()
+                if pending_audio and not self.focus and not was_armed:
+                    self.launch_audio(pending_audio)
                     return
                 if len(self.state['pending']) >= 64:
                     raise Unavailable('Saved message receipts need attention before recording again.')
@@ -607,12 +607,16 @@ class Companion:
         self.source = source
         self.play_task = asyncio.create_task(self.play(source,self.generation))
 
+    def next_audio(self):
+        eligible = [s for s in self.state['agenda'] if not s.get('paused') and not s.get('audio_unavailable')]
+        return next((s for s in eligible if s['kind'] in ('native_question','route_clarification')),eligible[0]) if eligible else None
+
     def pump(self):
         if not self.armed or self.closed or self.busy or self.state['current'] or not self.connected or self.play_task and not self.play_task.done():
             return
-        eligible = [s for s in self.state['agenda'] if not s.get('paused') and not s.get('audio_unavailable')]
-        if eligible:
-            self.launch_audio(next((s for s in eligible if s['kind'] in ('native_question','route_clarification')),eligible[0]))
+        selected = self.next_audio()
+        if selected:
+            self.launch_audio(selected)
 
     async def play(self, source, generation):
         offset = 0
