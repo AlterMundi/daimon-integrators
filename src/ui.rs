@@ -352,8 +352,15 @@ unsafe extern "C" fn stop(_button: W, data: W) {
 fn beta_helper() -> PathBuf {
     PathBuf::from(env::var("HOME").unwrap_or_default()).join(".local/bin/wigglecontrol-beta1")
 }
+fn mouse_helper() -> PathBuf {
+    PathBuf::from(env::var("HOME").unwrap_or_default()).join(".local/bin/wigglecontrol-mouse")
+}
 fn launch_beta(action: &'static str) {
-    let helper = beta_helper();
+    let helper = if mouse_helper().is_file() {
+        mouse_helper()
+    } else {
+        beta_helper()
+    };
     if !helper.is_file() {
         return;
     }
@@ -368,6 +375,9 @@ unsafe extern "C" fn open_beta(_button: W, _data: W) {
 }
 unsafe extern "C" fn stop_beta(_button: W, _data: W) {
     launch_beta("stop");
+}
+unsafe extern "C" fn calibrate_mouse(_button: W, _data: W) {
+    launch_beta("calibrate");
 }
 unsafe fn apply_view(u: &mut Ui, compact: bool) {
     u.compact = compact;
@@ -455,15 +465,29 @@ pub fn run(
         let small_cpu = badge(compact_box, "", "CPU");
         let small_temperature = badge(compact_box, "", "TEMP");
         let small_power = badge(compact_box, "", "MODE");
-        let small_beta = gtk_button_new_with_label(c("WG1").as_ptr());
+        let direct_mouse = mouse_helper().is_file();
+        let small_beta =
+            gtk_button_new_with_label(c(if direct_mouse { "Mouse ON" } else { "WG1" }).as_ptr());
         gtk_box_pack_start(compact_box, small_beta, 0, 0, 0);
         gtk_widget_set_tooltip_text(
             small_beta,
-            c("Open one-hand Beta1; camera stays off until Start").as_ptr(),
+            c(if direct_mouse {
+                "Activate saved one-hand mouse; headless detector"
+            } else {
+                "Open one-hand Beta1; camera stays off until Start"
+            })
+            .as_ptr(),
         );
-        let small_beta_stop = gtk_button_new_with_label(c("■ WG1").as_ptr());
+        let small_beta_stop =
+            gtk_button_new_with_label(c(if direct_mouse { "Mouse OFF" } else { "■ WG1" }).as_ptr());
         gtk_box_pack_start(compact_box, small_beta_stop, 0, 0, 0);
-        gtk_widget_set_tooltip_text(small_beta_stop, c("Stop only WiggleControl Beta1").as_ptr());
+        gtk_widget_set_tooltip_text(small_beta_stop, c("Deactivate only WiggleControl").as_ptr());
+        let small_calibrate = gtk_button_new_with_label(c("Calibrate").as_ptr());
+        gtk_box_pack_start(compact_box, small_calibrate, 0, 0, 0);
+        gtk_widget_set_tooltip_text(
+            small_calibrate,
+            c("Stop mouse and open camera calibration; explicit Start in calibration").as_ptr(),
+        );
         let small_stop = gtk_button_new_with_label(c("■").as_ptr());
         gtk_box_pack_start(compact_box, small_stop, 0, 0, 0);
         gtk_widget_set_tooltip_text(small_stop, c("Detener sólo mi captura gestionada").as_ptr());
@@ -479,10 +503,26 @@ pub fn run(
         let managed = label("Sin grabación gestionada", box_);
         let remote = label("CompAII · sin feed remoto reciente", box_);
         let system = label("CPU ? · temperatura ? · modo desconocido", box_);
-        let beta = gtk_button_new_with_label(c("Open WiggleControl Beta1").as_ptr());
+        let beta = gtk_button_new_with_label(
+            c(if direct_mouse {
+                "Activate virtual mouse"
+            } else {
+                "Open WiggleControl Beta1"
+            })
+            .as_ptr(),
+        );
         gtk_box_pack_start(box_, beta, 0, 0, 0);
-        let beta_stop = gtk_button_new_with_label(c("Stop WiggleControl Beta1").as_ptr());
+        let beta_stop = gtk_button_new_with_label(
+            c(if direct_mouse {
+                "Deactivate virtual mouse"
+            } else {
+                "Stop WiggleControl Beta1"
+            })
+            .as_ptr(),
+        );
         gtk_box_pack_start(box_, beta_stop, 0, 0, 0);
+        let calibrate = gtk_button_new_with_label(c("Calibrate virtual mouse").as_ptr());
+        gtk_box_pack_start(box_, calibrate, 0, 0, 0);
         let button = gtk_button_new_with_label(c("Detener mi captura").as_ptr());
         gtk_box_pack_start(box_, button, 0, 0, 0);
         gtk_widget_set_sensitive(button, 0);
@@ -551,7 +591,7 @@ pub fn run(
                 0,
             );
         }
-        let available = i32::from(beta_helper().is_file());
+        let available = i32::from(direct_mouse || beta_helper().is_file());
         for (buttons, function) in [
             ([small_beta, beta], open_beta as unsafe extern "C" fn(W, W)),
             (
@@ -572,7 +612,22 @@ pub fn run(
                 );
             }
         }
+        for button in [small_calibrate, calibrate] {
+            gtk_widget_set_visible(button, i32::from(direct_mouse));
+            let callback: unsafe extern "C" fn() =
+                std::mem::transmute(calibrate_mouse as unsafe extern "C" fn(W, W));
+            g_signal_connect_data(
+                button,
+                c("clicked").as_ptr(),
+                Some(callback),
+                data,
+                ptr::null_mut(),
+                0,
+            );
+        }
         gtk_widget_show_all(window);
+        gtk_widget_set_visible(small_calibrate, i32::from(direct_mouse));
+        gtk_widget_set_visible(calibrate, i32::from(direct_mouse));
         apply_view(&mut *(data as *mut Ui), compact);
         g_timeout_add(300, Some(tick), data);
         gtk_main();

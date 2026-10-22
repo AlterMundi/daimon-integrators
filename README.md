@@ -29,6 +29,9 @@ pointers; Telecodex owns native session activity and Stop.
 See [observation limits](docs/observation.md), [installation and rollback](docs/install.md),
 [qualification](docs/qualification.md), [power profiles](docs/power-profiles.md), and [current work](docs/CONTEXT.md).
 
+The optional [virtual mouse panel](docs/mouse-panel.md) provides direct Mouse ON,
+Mouse OFF and Calibrate actions with a separately installed receiving helper.
+
 ## Build
 
 Debian/Raspberry Pi OS: Rust 1.85+, `libgtk-3-dev`, `libgtk-layer-shell-dev`.
