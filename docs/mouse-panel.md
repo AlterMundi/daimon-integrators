@@ -19,6 +19,24 @@ record rather than hardcoding them in this panel. Recording stays disabled.
 The existing CAM observation remains the actual device activity indicator;
 button labels are actions, not proof of acquisition or input delivery.
 
+## Select the complete receiving profile
+
+A recent binary does not enable optional gestures omitted by an older settings
+file. Cuevanico's2026-10-27 inspection found its dashboard still selecting the
+basic profile, despite a binary containing the accepted action implementations.
+Select the accepted right-click/detail/Escape/grab-scroll settings in the helper's
+template paths as well as in the current source unit. Otherwise importing a newly
+saved calibration can silently return to the older gesture configuration.
+
+Before activation, use the selected binary's existing
+`provider-camera-until-stop-preflight` and require `right_click:true` plus non-null
+`detail`, `escape` and `scroll`, with `recording_configured:false`. The manual idle
+source's lightweight `/provider/config` then confirms `detail_configured`,
+`escape_configured`, `scroll_configured` and `right_click`. Preserve the calibrated
+workspace and cursor settings. This verifies selection without Prepare, camera
+capture or input injection; physical gesture acceptance is separate. Keep source,
+worker and manual acquisition separate, including during profile upgrades.
+
 ## Persistent desktop visibility
 
 Reuse the installed `daimon-integrators.desktop` graphical autostart entry and
