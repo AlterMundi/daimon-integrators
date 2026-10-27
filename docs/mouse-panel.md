@@ -18,3 +18,28 @@ profile paths and rollback. Maintain those in the Shared Resources private host
 record rather than hardcoding them in this panel. Recording stays disabled.
 The existing CAM observation remains the actual device activity indicator;
 button labels are actions, not proof of acquisition or input delivery.
+
+## Persistent desktop visibility
+
+Reuse the installed `daimon-integrators.desktop` graphical autostart entry and
+the selected `daimon-integrators-panel.service`. A static user unit is expected:
+the desktop starts it after the Wayland session exists. Enabling it in the
+user's boot target is not a substitute for graphical autostart. The installed
+GTK panel uses layer-shell's overlay layer (3), above ordinary and fullscreen
+windows; it does not need a browser always-on-top extension or labwc window rule.
+
+For a receiving host that wants the panel to remain available, use a user-unit
+drop-in with `[Service]`, `Restart=always` and `RestartSec=3`. Reload user units
+after changing this policy. This recovers process exits, including normal exits;
+an explicit `systemctl --user stop` still stops the panel for maintenance.
+Keep the chosen executable, Wayland environment, saved compact mode and existing
+autostart entry. Opening the panel does not enable the camera or virtual mouse.
+
+Verify on-screen controls as well as process status: an active PID alone did
+not establish visibility on Cuevanico on2026-10-27. A scoped panel restart restored
+the compact Mouse ON/OFF/Calibrate rail; the preceding loss of visibility was
+observed, but its cause was not established. Do not describe Restart=always as
+a visibility watchdog or a proven HDMI reconnect repair. Reuse the owner-local
+status command and a desktop screenshot without activating sensors. Never
+restart an active input trial just to test panel lifecycle. Actual reboot and
+TV hotplug acceptance are separate from configuration and current visibility.
