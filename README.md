@@ -26,6 +26,10 @@ pointers; Telecodex owns native session activity and Stop.
   provider, expiring when disconnected. Local device observation does not depend
   on the VPS. No model, Matrix inbox consumer or continuous recording is started.
 
+For explicit Matrix foundation discovery, [the foreground device projection](docs/device-discovery.md)
+reads this same owner-local status once. It exposes perceptor observations and the
+existing panel-view actuator contract without opening sensors or executing controls.
+
 See [observation limits](docs/observation.md), [installation and rollback](docs/install.md),
 [qualification](docs/qualification.md), [power profiles](docs/power-profiles.md), and [current work](docs/CONTEXT.md).
 
