@@ -45,8 +45,29 @@ permission remains the existing owner-only control socket. Use the installed
 Read status until `ui_compact` observes the selected view. The request ACK and
 `compact` alone do not prove that the widget changed. Restore the prior observed
 view after a reversible demonstration; never use Stop to hide unrelated activity.
-This projection itself executes no listed command. Capture, input, playback and
-power controls keep their existing task authority and limits.
+Without a control option this projection executes no listed command. Capture,
+input, playback and power controls keep their existing task authority and limits.
+
+For an explicitly requested panel change, use the same adapter once:
+
+```sh
+python3 -B tools/device_discovery.py --resource host-cuevanico --panel-view expanded
+```
+
+It reads current status first, avoids sending when the widget already has that
+view, sends at most one existing owner-control request, then makes at most three
+status reads within a24-second whole-operation deadline (six seconds per call).
+The returned `control` distinguishes command acknowledgment from observed widget
+state. A lost acknowledgment is retained as uncertain even if readback observes
+the desired view. No control is retried. Acknowledgment without matching fresh
+`ui_compact` returns `not-observed` and a nonzero exit; do not infer the change
+from requested `compact`. After uncertainty, use ordinary read-only discovery
+before deciding another explicitly authorized action. The report does not contain
+private owner status or media. Keep one latest report if retention is needed.
+
+This uses the existing socket permission, not a new remote grant, shell executor
+or literal native `/realm.controls` implementation. No view is automatically
+restored: restore a prior view explicitly only when the task requires it.
 
 Qualification: `python3 -m unittest discover -s tests`. Projection tests cover
 stale/future/incomplete observations, positive signal, requested-versus-observed
