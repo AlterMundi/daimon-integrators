@@ -1,6 +1,9 @@
 import copy
 import importlib.util
 import unittest
+import json
+import subprocess
+from unittest.mock import patch
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location(
@@ -38,6 +41,60 @@ def status():
 
 
 class DeviceDiscoveryTests(unittest.TestCase):
+    def foreground(self, replies, view="compact"):
+        calls = []
+
+        def run(args, **kwargs):
+            calls.append(args[1:])
+            value = replies.pop(0)
+            if isinstance(value, Exception):
+                raise value
+            return subprocess.CompletedProcess(args, 0, json.dumps(value).encode())
+
+        with patch.object(discovery.time, "time", return_value=100):
+            result = discovery.foreground("host-test", view, run=run,
+                                          clock=lambda: 0, sleep=lambda _: None)
+        return result, calls
+
+    def test_panel_waits_for_observed_widget_and_never_repeats_request(self):
+        changed = status()
+        changed["snapshot"]["ui_compact"] = True
+        result, calls = self.foreground([status(),
+            {"ok": True, "stage": "view_requested", "compact": True}, status(), changed])
+        self.assertEqual(calls, [["status"], ["view", "compact"], ["status"], ["status"]])
+        self.assertEqual(result["control"]["outcome"], "observed")
+        self.assertEqual(result["control"]["command_state"], "acknowledged")
+        self.assertNotIn("private", str(result))
+
+    def test_lost_ack_observes_without_retry_or_false_confirmation(self):
+        changed = status()
+        changed["snapshot"]["ui_compact"] = True
+        result, calls = self.foreground([status(), subprocess.TimeoutExpired("view", 6), changed])
+        self.assertEqual(result["control"]["command_state"], "uncertain")
+        self.assertEqual(result["control"]["outcome"], "observed")
+        self.assertEqual(calls.count(["view", "compact"]), 1)
+
+    def test_ack_is_not_readback_and_readback_failure_is_bounded(self):
+        error = subprocess.TimeoutExpired("status", 6)
+        result, calls = self.foreground([status(),
+            {"ok": True, "stage": "view_requested", "compact": True}, error, error, error])
+        self.assertEqual(result["control"]["outcome"], "not-observed")
+        self.assertEqual(result["control"]["command_state"], "acknowledged")
+        self.assertEqual(len(calls), 5)
+
+    def test_existing_view_and_read_only_mode_execute_no_control(self):
+        for view in ("expanded", None):
+            result, calls = self.foreground([status()], view)
+            self.assertEqual(calls, [["status"]])
+            if view:
+                self.assertEqual(result["control"]["outcome"], "already-observed")
+            else:
+                self.assertNotIn("control", result)
+
+    def test_initial_status_failure_never_sends(self):
+        with self.assertRaises(ValueError):
+            self.foreground([{"ok": False}])
+
     def test_live_status_keeps_signal_recording_and_requested_ui_distinct(self):
         report = discovery.project(status(), "host-test", now=100)
         self.assertEqual(

@@ -142,23 +142,83 @@ def project(value, resource, now=None):
     }
 
 
+def foreground(resource, panel_view=None, *, run=subprocess.run, clock=time.monotonic,
+               sleep=time.sleep):
+    """One owner action and bounded observed return; never retry a control."""
+    if re.fullmatch(r"[a-z][a-z0-9-]{0,95}", resource) is None:
+        raise ValueError("invalid_resource_reference")
+    if panel_view not in (None, "compact", "expanded"):
+        raise ValueError("invalid_panel_view")
+    deadline = clock() + 24
+
+    def call(arguments):
+        remaining = deadline - clock()
+        if remaining <= 0:
+            raise TimeoutError("foreground_deadline")
+        result = run([BINARY, *arguments], capture_output=True,
+                     timeout=min(6, remaining), check=True)
+        if len(result.stdout) > MAX_BYTES:
+            raise ValueError("status_too_large")
+        return json.loads(result.stdout)
+
+    report = project(call(["status"]), resource)
+    if panel_view is None:
+        return report
+    desired = panel_view == "compact"
+    receipt = dict(schema="dm.integrator-panel-control/v1", requested_view=panel_view,
+                   command_state="not-attempted", outcome="not-observed",
+                   control_attempts=0, readback_attempts=0)
+    report["control"] = receipt
+    if report["actuators"][0]["observed_compact"] is desired:
+        receipt.update(outcome="already-observed")
+        return report
+    # Set uncertainty BEFORE external I/O. A timeout is never another send.
+    receipt.update(command_state="uncertain", control_attempts=1)
+    report["limits"].pop("controls_executed", None)
+    report["actuators"][0].pop("executed", None)
+    try:
+        ack = call(["view", panel_view])
+        if (isinstance(ack, dict) and ack.get("ok") is True
+                and ack.get("stage") == "view_requested"
+                and ack.get("compact") is desired):
+            receipt["command_state"] = "acknowledged"
+    except (OSError, ValueError, subprocess.SubprocessError):
+        pass
+    for attempt in range(3):
+        if clock() >= deadline:
+            break
+        receipt["readback_attempts"] += 1
+        try:
+            observed = project(call(["status"]), resource)
+            observed["limits"].pop("controls_executed", None)
+            observed["actuators"][0].pop("executed", None)
+            observed["control"] = receipt
+            report = observed
+            if observed["actuators"][0]["observed_compact"] is desired:
+                receipt["outcome"] = "observed"
+                break
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass
+        if attempt < 2 and clock() < deadline:
+            sleep(min(.2, max(0, deadline-clock())))
+    report["limits"].update(control_attempts_max=1, readback_attempts_max=3,
+                            foreground_timeout_seconds=24)
+    return report
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--resource", required=True, help="Existing Shared Resources ID"
     )
+    parser.add_argument("--panel-view", choices=("compact", "expanded"),
+                        help="Explicit existing owner panel control, with observed return")
     args = parser.parse_args()
     # Validate selection before contacting the existing local service.
     if re.fullmatch(r"[a-z][a-z0-9-]{0,95}", args.resource) is None:
         parser.error("invalid resource reference")
     try:
-        result = subprocess.run(
-            [BINARY, "status"], capture_output=True, timeout=6, check=True
-        )
-        # The native owner socket itself caps status at64KiB.
-        if len(result.stdout) > MAX_BYTES:
-            raise ValueError("status_too_large")
-        report = project(json.loads(result.stdout), args.resource)
+        report = foreground(args.resource, args.panel_view)
     except (OSError, ValueError, subprocess.SubprocessError):
         print(
             json.dumps(
@@ -174,7 +234,8 @@ def main():
         )
         return 1
     print(json.dumps(report, allow_nan=False, sort_keys=True))
-    return 0
+    return (0 if report.get("control", {}).get("outcome", "observed")
+            in ("observed", "already-observed") else 1)
 
 
 if __name__ == "__main__":
