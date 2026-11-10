@@ -64,6 +64,7 @@ class DeviceDiscoveryTests(unittest.TestCase):
         self.assertEqual(calls, [["status"], ["view", "compact"], ["status"], ["status"]])
         self.assertEqual(result["control"]["outcome"], "observed")
         self.assertEqual(result["control"]["command_state"], "acknowledged")
+        self.assertEqual(result["limits"]["status_calls"], 3)
         self.assertNotIn("private", str(result))
 
     def test_lost_ack_observes_without_retry_or_false_confirmation(self):

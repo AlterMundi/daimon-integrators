@@ -201,7 +201,8 @@ def foreground(resource, panel_view=None, *, run=subprocess.run, clock=time.mono
             pass
         if attempt < 2 and clock() < deadline:
             sleep(min(.2, max(0, deadline-clock())))
-    report["limits"].update(control_attempts_max=1, readback_attempts_max=3,
+    report["limits"].update(status_calls=1+receipt["readback_attempts"],
+                            control_attempts_max=1, readback_attempts_max=3,
                             foreground_timeout_seconds=24)
     return report
 
